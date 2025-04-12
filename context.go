@@ -62,7 +62,11 @@ func (c *contextImpl) String(code int, out string) error {
 }
 
 func (c *contextImpl) Log() *slog.Logger {
-	return appLog
+	logger, ok := c.r.Context().Value("scopedLogger").(*slog.Logger)
+	if !ok || logger == nil {
+		return appLog
+	}
+	return logger
 }
 
 const HeaderContentType = "Content-Type"

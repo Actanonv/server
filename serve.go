@@ -17,7 +17,8 @@ type Options struct {
 	Public      string
 	Middlewares []alice.Constructor
 	Routes      []Route
-	Logging     bool
+	Log         *slog.Logger
+	LogRequests bool
 	Templates   *templates.Template
 }
 
@@ -33,12 +34,13 @@ type ServerMux struct {
 
 	Middlewares []alice.Constructor
 	Routes      []Route
+	log         *slog.Logger
 
 	Mux          *http.ServeMux
 	templates    *templates.Template
 	chain        *alice.Chain
 	routeMounted bool
-	withLogging  bool
+	logRequests  bool
 }
 
 func Init(option Options) *ServerMux {
@@ -51,8 +53,13 @@ func Init(option Options) *ServerMux {
 		Public:      option.Public,
 		Middlewares: option.Middlewares,
 		Routes:      option.Routes,
-		withLogging: option.Logging,
+		log:         option.Log,
+		logRequests: option.LogRequests,
 		templates:   option.Templates,
+	}
+
+	if srv.log == nil {
+		srv.log = appLog
 	}
 
 	return srv
@@ -90,7 +97,7 @@ func (s *ServerMux) Run() error {
 }
 
 func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !s.withLogging {
+	if !s.logRequests {
 		s.Mux.ServeHTTP(w, r)
 		return
 	}
@@ -98,6 +105,6 @@ func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	rw := &ResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 	s.Mux.ServeHTTP(rw, r)
-	slog.Info(r.RequestURI, "method", r.Method, "path", r.URL.Path, "status", rw.statusCode, "duration", time.Since(start))
+	s.log.Info(r.RequestURI, "method", r.Method, "path", r.URL.Path, "status", rw.statusCode, "duration", time.Since(start))
 
 }

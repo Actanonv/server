@@ -10,6 +10,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// Define custom types for context keys
+type contextKey string
+
+const (
+	requestIDKey    contextKey = "requestID"
+	scopedLoggerKey contextKey = "scopedLogger"
+)
+
 func RemoveTrailingSlashMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
@@ -34,7 +42,8 @@ func (rw *ResponseWriter) WriteHeader(statusCode int) {
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := uuid.New().String()
-		ctx := context.WithValue(r.Context(), "requestID", requestID)
+		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
+		ctx = context.WithValue(ctx, scopedLoggerKey, appLog.With("reqID", requestID))
 		r = r.WithContext(ctx)
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
