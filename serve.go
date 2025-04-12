@@ -41,7 +41,7 @@ type ServerMux struct {
 	withLogging  bool
 }
 
-func Server(option Options) *ServerMux {
+func Init(option Options) *ServerMux {
 	mux := http.NewServeMux()
 
 	srv := &ServerMux{
