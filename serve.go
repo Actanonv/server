@@ -1,4 +1,4 @@
-package mux
+package server
 
 import (
 	"errors"
@@ -79,7 +79,7 @@ func (s *ServerMux) Route() error {
 
 var ErrRoutesNotMounted = errors.New("routes not mounted")
 
-func (s *ServerMux) Serve() error {
+func (s *ServerMux) Run() error {
 	if !s.routeMounted {
 		return ErrRoutesNotMounted
 	}

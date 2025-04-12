@@ -1,4 +1,4 @@
-module github.com/actanonv/serve
+module github.com/actanonv/server
 
 go 1.24.1
 
