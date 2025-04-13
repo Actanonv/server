@@ -11,14 +11,23 @@ func init() {
 	appLog = slog.Default()
 }
 
-func InitLog(env string, logLevel slog.Level, setLogDefault bool) error {
+type ENVTypes string
+
+const (
+	ENVProduction = "production"
+	ENVStaging    = "staging"
+	ENVTest       = "test"
+	ENVDev        = "dev"
+)
+
+func InitLog(env ENVTypes, logLevel slog.Level, setLogDefault bool) error {
 
 	option := &slog.HandlerOptions{
 		AddSource: true,
 		Level:     logLevel,
 	}
 
-	if env == "production" {
+	if env == ENVProduction || env == ENVStaging {
 		appLog = slog.New(slog.NewJSONHandler(os.Stdout, option))
 	} else {
 		appLog = slog.New(slog.NewTextHandler(os.Stderr, option))
