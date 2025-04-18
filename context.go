@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -9,12 +11,15 @@ import (
 	"github.com/mayowa/templates"
 )
 
-var _ Context = (&contextImpl{})
+// RenderOpt is a short alias for templates.RenderOption
+type RenderOpt = templates.RenderOption
+
+var _ Context = &contextImpl{}
 
 type Context interface {
 	Request() *http.Request
 	Response() http.ResponseWriter
-	Render(ctx templates.RenderOption) error
+	Render(status int, ctx RenderOpt) error
 	HTMX() *htmx.HTMX
 	String(code int, out string) error
 	Log() *slog.Logger
@@ -40,13 +45,22 @@ func (c *contextImpl) Response() http.ResponseWriter {
 	return c.w
 }
 
-var ErrTemplatesNotInitialzed = errors.New("templates not initialized")
+var ErrTemplatesNotInitialized = errors.New("templates not initialized")
 
-func (c *contextImpl) Render(ctx templates.RenderOption) error {
+func (c *contextImpl) Render(status int, ctx RenderOpt) error {
 	if templateMgr == nil {
-		return ErrTemplatesNotInitialzed
+		return ErrTemplatesNotInitialized
 	}
-	return templateMgr.Render(c.Response(), ctx)
+
+	out := new(bytes.Buffer)
+	if err := templateMgr.Render(out, ctx); err != nil {
+		return err
+	}
+
+	c.writeContentType("text/html; charset=utf-8")
+	c.Response().WriteHeader(status)
+	_, err := io.Copy(c.Response(), out)
+	return err
 }
 
 func (c *contextImpl) HTMX() *htmx.HTMX {
