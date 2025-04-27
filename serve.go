@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"github.com/alexedwards/scs/v2"
 	"log/slog"
 	"net/http"
 	"time"
@@ -20,6 +21,7 @@ type Options struct {
 	Log         *slog.Logger
 	LogRequests bool
 	Templates   *templates.Template
+	SessionMgr  *scs.SessionManager
 }
 
 type Route struct {
@@ -41,6 +43,7 @@ type ServerMux struct {
 	chain        *alice.Chain
 	routeMounted bool
 	logRequests  bool
+	sessionMgr   *scs.SessionManager
 }
 
 func Init(option Options) *ServerMux {
@@ -56,6 +59,7 @@ func Init(option Options) *ServerMux {
 		log:         option.Log,
 		logRequests: option.LogRequests,
 		templates:   option.Templates,
+		sessionMgr:  option.SessionMgr,
 	}
 
 	if srv.log == nil {
@@ -93,6 +97,10 @@ func (s *ServerMux) Run() error {
 
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
 	slog.Info("listening on", "addr", addr)
+	if s.sessionMgr != nil {
+		s.sessionMgr.LoadAndSave(s.Mux)
+	}
+
 	return http.ListenAndServe(addr, s)
 }
 
