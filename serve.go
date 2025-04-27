@@ -97,11 +97,13 @@ func (s *ServerMux) Run() error {
 
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
 	slog.Info("listening on", "addr", addr)
+
+	var srv http.Handler = s
 	if s.sessionMgr != nil {
-		s.sessionMgr.LoadAndSave(s.Mux)
+		srv = s.sessionMgr.LoadAndSave(s)
 	}
 
-	return http.ListenAndServe(addr, s)
+	return http.ListenAndServe(addr, srv)
 }
 
 func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
