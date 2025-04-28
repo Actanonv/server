@@ -39,6 +39,7 @@ type ServerMux struct {
 	log         *slog.Logger
 
 	Mux          *http.ServeMux
+	HTTPServer   *http.Server
 	templates    *templates.Template
 	chain        *alice.Chain
 	routeMounted bool
@@ -65,6 +66,8 @@ func Init(option Options) *ServerMux {
 	if srv.log == nil {
 		srv.log = appLog
 	}
+
+	srv.HTTPServer = &http.Server{}
 
 	return srv
 }
@@ -103,7 +106,9 @@ func (s *ServerMux) Run() error {
 		srv = s.sessionMgr.LoadAndSave(s)
 	}
 
-	return http.ListenAndServe(addr, srv)
+	s.HTTPServer.Addr = addr
+	s.HTTPServer.Handler = srv
+	return s.HTTPServer.ListenAndServe()
 }
 
 func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
