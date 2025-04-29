@@ -60,3 +60,20 @@ func TestIDMiddleware(t *testing.T) {
 	require.NotEmpty(t, w.Header().Get("X-Request-ID"))
 	require.Equal(t, rid, w.Header().Get("X-Request-ID"))
 }
+
+type panickingHandler struct{}
+
+func (p panickingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	panic("testing recover")
+}
+func TestRecoveryMiddleware(t *testing.T) {
+	p := panickingHandler{}
+
+	middleware := RecoveryMiddleware(p)
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "http://dummy.com/target", nil)
+	middleware.ServeHTTP(w, r)
+
+	// no error checks - a successful recover should leave no traces
+	assert.Equal(t, w.Result().StatusCode, http.StatusInternalServerError)
+}
