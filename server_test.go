@@ -50,7 +50,7 @@ func TestServer(t *testing.T) {
 		},
 	}
 
-	// add test  that uses a template
+	// add test that uses a template
 	options := Options{
 		Host:        "localhost",
 		Port:        4000,
@@ -77,14 +77,12 @@ func TestServer(t *testing.T) {
 	}()
 
 	time.Sleep(time.Millisecond * 10)
+
 	resp, err := http.Get("http://localhost:4000/hello")
 	require.NoError(t, err)
 
-	respBody := make([]byte, resp.ContentLength)
-	_, err = resp.Body.Read(respBody)
-
+	respBody, err := io.ReadAll(resp.Body)
 	defer resp.Body.Close()
-
 	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatal(err)
 	}
@@ -95,6 +93,5 @@ func TestServer(t *testing.T) {
 	defer cancel()
 
 	err = srv.HTTPServer.Shutdown(ctx)
-
 	assert.NoError(t, err)
 }
