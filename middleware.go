@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"log/slog"
 
@@ -17,16 +16,6 @@ const (
 	requestIDKey    contextKey = "requestID"
 	scopedLoggerKey contextKey = "scopedLogger"
 )
-
-func RemoveTrailingSlashMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" && strings.HasSuffix(r.URL.Path, "/") {
-			r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
 
 // ResponseWriter a response writer that captures the status code
 type ResponseWriter struct {
