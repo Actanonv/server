@@ -10,17 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type dummyHandler struct {
-}
-
-func (d dummyHandler) ServeHTTP(http.ResponseWriter, *http.Request) {
-
-}
-
 func TestTrailingSlashMiddleware(t *testing.T) {
-	d := dummyHandler{}
-
-	middleware := RemoveTrailingSlashMiddleware(d)
+	middleware := RemoveTrailingSlashMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))
 	tt := []struct {
 		name string
 		w    http.ResponseWriter
@@ -44,9 +36,8 @@ func TestTrailingSlashMiddleware(t *testing.T) {
 }
 
 func TestIDMiddleware(t *testing.T) {
-	d := dummyHandler{}
-
-	middleware := RequestIDMiddleware(d)
+	middleware := RequestIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "http://dummy.com/target", nil)
 	middleware.ServeHTTP(w, r)
@@ -61,15 +52,11 @@ func TestIDMiddleware(t *testing.T) {
 	require.Equal(t, rid, w.Header().Get("X-Request-ID"))
 }
 
-type panickingHandler struct{}
-
-func (p panickingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	panic("testing recover")
-}
 func TestRecoveryMiddleware(t *testing.T) {
-	p := panickingHandler{}
-
-	middleware := RecoveryMiddleware(p)
+	middleware := RecoveryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("testing recover")
+	}),
+	)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "http://dummy.com/target", nil)
 	middleware.ServeHTTP(w, r)

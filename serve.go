@@ -3,16 +3,17 @@ package server
 import (
 	"errors"
 	"fmt"
-	"github.com/alexedwards/scs/v2"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/alexedwards/scs/v2"
 
 	"github.com/justinas/alice"
 	"github.com/mayowa/templates"
 )
 
-type Options struct {
+type MuxOptions struct {
 	Host        string
 	Port        int
 	Public      string
@@ -47,7 +48,7 @@ type ServerMux struct {
 	sessionMgr   *scs.SessionManager
 }
 
-func Init(option Options) *ServerMux {
+func Init(option MuxOptions) *ServerMux {
 	mux := http.NewServeMux()
 
 	srv := &ServerMux{
