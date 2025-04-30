@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/justinas/alice"
 	"github.com/mayowa/templates"
 	"github.com/stretchr/testify/assert"
@@ -42,18 +43,18 @@ func TestInit(t *testing.T) {
 	assert.Equal(options.SessionMgr, srv.sessionMgr)
 }
 
-func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (int, string, error) {
+func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (*http.Response, error) {
 	t.Helper()
 
 	var err error
 
 	srv := Init(options)
 	if srv == nil {
-		return 0, "", errors.New("server not initialized")
+		return nil, errors.New("server not initialized")
 	}
 
 	if err = srv.Route(); err != nil {
-		return 0, "", err
+		return nil, err
 	}
 
 	err = nil
@@ -66,7 +67,7 @@ func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (int, str
 
 	time.Sleep(time.Millisecond * 10)
 	if err != nil {
-		return 0, "", fmt.Errorf("run server: %w", err)
+		return nil, fmt.Errorf("run server: %w", err)
 	}
 
 	defer func() {
@@ -81,12 +82,10 @@ func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (int, str
 
 	resp, err := http.Get(fmt.Sprintf("http://%s:%d%s", options.Host, options.Port, reqUrl))
 	if err != nil {
-		return 0, "", fmt.Errorf("get request: %w", err)
+		return nil, fmt.Errorf("get request: %w", err)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
 
-	return resp.StatusCode, string(body), nil
+	return resp, nil
 }
 
 func TestServerRendering(t *testing.T) {
@@ -105,7 +104,7 @@ func TestServerRendering(t *testing.T) {
 		handler        HandlerFunc
 	}{
 		{
-			name:           "render hello:string",
+			name:           "render string",
 			route:          "GET /hello",
 			url:            "/hello",
 			expectedBody:   "Hello, World!",
@@ -114,13 +113,19 @@ func TestServerRendering(t *testing.T) {
 				return ctx.String(http.StatusOK, "Hello, World!")
 			},
 		},
-		//
-		//{
-		//	name:           "render template",
-		//	route:          "test-template",
-		//	expectedBody:   "Hello, World!",
-		//	expectedStatus: http.StatusOK,
-		//},
+
+		{
+			name:           "render template",
+			route:          "GET /test-template",
+			url:            "/test-template",
+			expectedBody:   "Hello, World!",
+			expectedStatus: http.StatusOK,
+			handler: func(ctx Context) error {
+				return ctx.Render(http.StatusOK, templates.RenderOption{
+					Template: "hello",
+				})
+			},
+		},
 	}
 
 	for _, tt := range test {
@@ -131,10 +136,13 @@ func TestServerRendering(t *testing.T) {
 				{Match: tt.route, HandlerFn: tt.handler},
 			}
 
-			statusCode, body, err := runServerForTest(t, options, tt.url)
+			resp, err := runServerForTest(t, options, tt.url)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedStatus, statusCode)
-			assert.Equal(t, tt.expectedBody, body)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedBody, string(body))
 		})
 	}
 }
@@ -155,36 +163,47 @@ func TestServerMiddleware(t *testing.T) {
 		handler        HandlerFunc
 	}{
 		{
-			name:           "test reqId and trailing slash",
-			route:          "GET /hello/",
-			url:            "/hello",
+			name:           "test reqId",
+			route:          "GET /req-id",
+			url:            "/req-id",
 			expectedStatus: http.StatusOK,
 			middleware: []alice.Constructor{
-				//RemoveTrailingSlashMiddleware,
 				RequestIDMiddleware,
+			},
+			handler: func(ctx Context) error {
+				temp := ctx.Request().Context().Value(requestIDKey)
+				rId, ok := temp.(string)
+				if !ok {
+					return fmt.Errorf("requestId not string")
+				}
+
+				if rId == "" {
+					return fmt.Errorf("request ID empty string")
+				}
+
+				headerRId := ctx.Response().Header().Get(RequestIDHeaderKey)
+				if headerRId == "" {
+					return fmt.Errorf("no request id in header")
+				}
+
+				if headerRId != rId {
+					return fmt.Errorf("context value doesn't match header value")
+				}
+				return nil
+			},
+		},
+		{
+			name:           "test panic recovery",
+			route:          "GET /panic",
+			url:            "/panic",
+			expectedStatus: http.StatusInternalServerError,
+			middleware: []alice.Constructor{
 				RecoveryMiddleware,
 			},
 			handler: func(ctx Context) error {
-				return ctx.String(http.StatusOK, "Hello, World!")
+				panic("catch me if you can")
 			},
 		},
-
-		//{
-		//	name:           "test reqId and trailing slash",
-		//	route:          "hello/",
-		//	expectedBody:   "Hello, World!",
-		//	expectedStatus: http.StatusOK,
-		//	middleware: []alice.Constructor{
-		//		RemoveTrailingSlashMiddleware,
-		//	},
-		//},
-		//
-		//{
-		//	name:           "test panic recovery",
-		//	route:          "panic/",
-		//	expectedBody:   "",
-		//	expectedStatus: http.StatusInternalServerError,
-		//},
 	}
 
 	for _, tt := range tests {
@@ -195,11 +214,72 @@ func TestServerMiddleware(t *testing.T) {
 				{Match: tt.route, HandlerFn: tt.handler},
 			}
 
-			statusCode, _, err := runServerForTest(t, options, tt.url)
+			resp, err := runServerForTest(t, options, tt.url)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedStatus, statusCode)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 		})
 	}
 }
 
-func TestServerSessions(t *testing.T) {}
+func TestServerSessions(t *testing.T) {
+	const sessionKey string = "test"
+	const sessionValue string = "test"
+	sessionManager := scs.New()
+
+	tests := []struct {
+		name           string
+		route          string
+		url            string
+		expectedStatus int
+		middleware     []alice.Constructor
+		handler        HandlerFunc
+	}{
+		{
+			name:           "test write",
+			route:          "GET /write",
+			url:            "/write",
+			expectedStatus: 200,
+			handler: func(ctx Context) error {
+				sessionManager.Put(ctx.Request().Context(), sessionKey, sessionValue)
+				return nil
+			},
+		},
+		{
+			name:           "test read",
+			route:          "GET /read",
+			url:            "/read",
+			expectedStatus: 200,
+			handler: func(ctx Context) error {
+				sessionManager.Put(ctx.Request().Context(), sessionKey, sessionValue)
+
+				v := sessionManager.Get(ctx.Request().Context(), sessionKey)
+				val, ok := v.(string)
+
+				if !ok {
+					return fmt.Errorf("value not string")
+				}
+
+				if val != sessionValue {
+					return fmt.Errorf("value not equal to %s", sessionValue)
+				}
+
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			muxOptions := defaultOptions
+			muxOptions.SessionMgr = sessionManager
+			muxOptions.Routes = []Route{
+				{Match: tt.route, HandlerFn: tt.handler},
+			}
+
+			resp, err := runServerForTest(t, muxOptions, tt.url)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+			assert.NotEmpty(t, resp.Header.Get("Set-Cookie"))
+		})
+	}
+}
