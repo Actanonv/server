@@ -20,6 +20,7 @@ type Context interface {
 	Request() *http.Request
 	Response() http.ResponseWriter
 	Render(status int, ctx RenderOpt) error
+	Redirect(status int, url string) error
 	HTMX() *htmx.HTMX
 	String(code int, out string) error
 	Log() *slog.Logger
@@ -61,6 +62,11 @@ func (c *contextImpl) Render(status int, ctx RenderOpt) error {
 	c.Response().WriteHeader(status)
 	_, err := io.Copy(c.Response(), out)
 	return err
+}
+
+func (c *contextImpl) Redirect(statusCode int, url string) error {
+	http.Redirect(c.Response(), c.Request(), url, statusCode)
+	return nil
 }
 
 func (c *contextImpl) HTMX() *htmx.HTMX {
