@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -113,6 +114,10 @@ func (s *ServerMux) Run() error {
 }
 
 func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.sessionMgr != nil {
+		r = r.WithContext(context.WithValue(r.Context(), "_sessMgr_", s.sessionMgr))
+	}
+
 	if !s.logRequests {
 		s.Mux.ServeHTTP(w, r)
 		return

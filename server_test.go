@@ -240,7 +240,7 @@ func TestServerSessions(t *testing.T) {
 			url:            "/write",
 			expectedStatus: 200,
 			handler: func(ctx Context) error {
-				sessionManager.Put(ctx.Request().Context(), sessionKey, sessionValue)
+				ctx.Session().Put(sessionKey, sessionValue)
 				return nil
 			},
 		},
@@ -250,9 +250,9 @@ func TestServerSessions(t *testing.T) {
 			url:            "/read",
 			expectedStatus: 200,
 			handler: func(ctx Context) error {
-				sessionManager.Put(ctx.Request().Context(), sessionKey, sessionValue)
+				ctx.Session().Put(sessionKey, sessionValue)
 
-				v := sessionManager.Get(ctx.Request().Context(), sessionKey)
+				v := ctx.Session().Get(sessionKey)
 				val, ok := v.(string)
 
 				if !ok {

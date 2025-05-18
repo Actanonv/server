@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/mayowa/go-htmx"
 	"github.com/mayowa/templates"
 )
@@ -24,6 +25,7 @@ type Context interface {
 	HTMX() *htmx.HTMX
 	String(code int, out string) error
 	Log() *slog.Logger
+	Session() *sessHelper
 }
 
 type contextImpl struct {
@@ -96,4 +98,34 @@ func (c *contextImpl) writeContentType(value string) {
 	if header.Get(HeaderContentType) == "" {
 		header.Set(HeaderContentType, value)
 	}
+}
+
+type sessHelper struct {
+	r    *http.Request
+	sess *scs.SessionManager
+}
+
+func (h *sessHelper) Get(key string) any {
+	return h.sess.Get(h.r.Context(), key)
+}
+
+func (h *sessHelper) Put(key string, val interface{}) {
+	h.sess.Put(h.r.Context(), key, val)
+}
+
+func (h *sessHelper) Mgr() *scs.SessionManager {
+	return h.sess
+}
+
+func (c *contextImpl) Session() *sessHelper {
+	retv := c.Request().Context().Value("_sessMgr_")
+	if retv == nil {
+		return nil
+	}
+
+	sess, ok := retv.(*scs.SessionManager)
+	if !ok || sess == nil {
+		return nil
+	}
+	return &sessHelper{r: c.Request(), sess: sess}
 }
