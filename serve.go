@@ -27,8 +27,8 @@ type MuxOptions struct {
 }
 
 type Route struct {
-	Match     string
-	HandlerFn HandlerFunc
+	Match   string
+	Handler http.Handler
 }
 
 type ServerMux struct {
@@ -86,7 +86,7 @@ func (s *ServerMux) Route() error {
 	s.Mux.Handle("/public/", s.chain.Then(http.StripPrefix("/public", http.FileServer(http.Dir(pubFolder)))))
 
 	for _, r := range s.Routes {
-		s.Mux.Handle(r.Match, chain.Then(r.HandlerFn))
+		s.Mux.Handle(r.Match, chain.Then(r.Handler))
 	}
 
 	s.routeMounted = true

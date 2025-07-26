@@ -133,7 +133,7 @@ func TestServerRendering(t *testing.T) {
 			options := defaultOptions
 			options.Templates = tMgr
 			options.Routes = []Route{
-				{Match: tt.route, HandlerFn: tt.handler},
+				{Match: tt.route, Handler: tt.handler},
 			}
 
 			resp, err := runServerForTest(t, options, tt.url)
@@ -211,7 +211,7 @@ func TestServerMiddleware(t *testing.T) {
 			options := defaultOptions
 			options.Middlewares = tt.middleware
 			options.Routes = []Route{
-				{Match: tt.route, HandlerFn: tt.handler},
+				{Match: tt.route, Handler: tt.handler},
 			}
 
 			resp, err := runServerForTest(t, options, tt.url)
@@ -273,7 +273,7 @@ func TestServerSessions(t *testing.T) {
 			muxOptions := defaultOptions
 			muxOptions.SessionMgr = sessionManager
 			muxOptions.Routes = []Route{
-				{Match: tt.route, HandlerFn: tt.handler},
+				{Match: tt.route, Handler: tt.handler},
 			}
 
 			resp, err := runServerForTest(t, muxOptions, tt.url)
