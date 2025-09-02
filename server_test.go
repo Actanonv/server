@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -53,16 +54,96 @@ func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (*http.Re
 		return nil, err
 	}
 
+	return runTestServer(t, srv, reqUrl)
+}
+
+func runTestServer(t *testing.T, srv *ServerMux, reqURl string) (*http.Response, error) {
+	t.Helper()
+	if srv == nil {
+		return nil, errors.New("server not initialized")
+	}
+
+	var err error
+
 	err = nil
 	tSrv := httptest.NewServer(srv.HTTPServer.Handler)
 	defer tSrv.Close()
 
-	resp, err := tSrv.Client().Get(tSrv.URL + reqUrl)
+	resp, err := tSrv.Client().Get(tSrv.URL + reqURl)
 	if err != nil {
 		return nil, fmt.Errorf("get request: %w", err)
 	}
 
 	return resp, nil
+}
+
+func TestServerMux_Handle(t *testing.T) {
+	options := MuxOptions{}
+	srv := Init(options)
+	if srv == nil {
+		require.Error(t, errors.New("server not initialized"))
+		return
+	}
+
+	srv.HandleFunc("/hello", func(ctx Context) error {
+		ctx.String(http.StatusOK, "Hello, World!")
+		return nil
+	})
+
+	if err := srv.Route(); err != nil {
+		require.Error(t, err)
+		return
+	}
+
+	resp, err := runTestServer(t, srv, "/hello")
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	buff := new(bytes.Buffer)
+	_, err = io.Copy(buff, resp.Body)
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+	assert.Equal(t, "Hello, World!", buff.String())
+
+}
+
+func TestServerMux_Group(t *testing.T) {
+	options := MuxOptions{}
+	srv := Init(options)
+	if srv == nil {
+		require.Error(t, errors.New("server not initialized"))
+		return
+	}
+
+	srv.Group("/greet", func(srv *ServerMux) {
+		srv.HandleFunc("/hello", func(ctx Context) error {
+			return ctx.String(http.StatusOK, "Hello, World!")
+		})
+	})
+
+	if err := srv.Route(); err != nil {
+		require.Error(t, err)
+		return
+	}
+
+	resp, err := runTestServer(t, srv, "/greet/hello")
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	buff := new(bytes.Buffer)
+	_, err = io.Copy(buff, resp.Body)
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+	assert.Equal(t, "Hello, World!", buff.String())
+
 }
 
 func TestServerRendering(t *testing.T) {

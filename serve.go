@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -77,7 +78,13 @@ func Init(option MuxOptions) *ServerMux {
 	return srv
 }
 
+// Route mounts the routes to the server. It should be called after all routes are added
+// to the server. It is called from Run() if not called before.
 func (s *ServerMux) Route() error {
+	if s.routeMounted {
+		return nil
+	}
+
 	chain := Chain(s.Middleware)
 	pubFolder := s.Public
 	if pubFolder == "" {
@@ -108,17 +115,28 @@ func (s *ServerMux) HandleFunc(pattern string, handler HandlerFunc) {
 	s.Handle(pattern, handler)
 }
 
-func (s *ServerMux) Group(pattern string, fn func(srv *http.ServeMux)) {
+func (s *ServerMux) Group(pattern string, fn func(srv *ServerMux)) {
 	grp := http.NewServeMux()
-	fn(grp)
-	s.Handle(pattern, grp)
+	sub := &ServerMux{}
+	fn(sub)
+
+	for _, r := range sub.routes {
+		grp.Handle(r.Match, r.Handler)
+	}
+	if !strings.HasSuffix(pattern, "/") {
+		pattern += "/"
+	}
+
+	mwChain := Chain(sub.Middleware)
+	sPattern := pattern[:len(pattern)-1]
+	s.Handle(pattern, http.StripPrefix(sPattern, mwChain.Then(grp)))
 }
 
 var ErrRoutesNotMounted = errors.New("routes not mounted")
 
 func (s *ServerMux) Run() error {
-	if !s.routeMounted {
-		return ErrRoutesNotMounted
+	if err := s.Route(); err != nil {
+		return err
 	}
 
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
