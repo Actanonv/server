@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
-	"net/http"
-
 	"log/slog"
+	"net/http"
 
 	"github.com/google/uuid"
 )

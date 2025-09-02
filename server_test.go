@@ -1,16 +1,14 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/justinas/alice"
 	"github.com/mayowa/templates"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +20,6 @@ func TestInit(t *testing.T) {
 		Port:        4000,
 		Public:      "",
 		Middlewares: nil,
-		Routes:      nil,
 		Log:         nil,
 		Templates:   nil,
 		SessionMgr:  nil,
@@ -35,8 +32,7 @@ func TestInit(t *testing.T) {
 	assert.Equal(options.Host, srv.Host)
 	assert.Equal(options.Port, srv.Port)
 	assert.Equal(options.Public, srv.Public)
-	assert.Equal(options.Middlewares, srv.Middlewares)
-	assert.Equal(options.Routes, srv.Routes)
+	assert.Equal(options.Middlewares, srv.Middleware)
 	assert.Equal(srv.log, appLog)
 	assert.Equal(options.LogRequests, srv.logRequests)
 	assert.Equal(options.Templates, srv.templates)
@@ -58,29 +54,10 @@ func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (*http.Re
 	}
 
 	err = nil
-	go func() {
-		err = srv.Run()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return
-		}
-	}()
+	tSrv := httptest.NewServer(srv.HTTPServer.Handler)
+	defer tSrv.Close()
 
-	time.Sleep(time.Millisecond * 10)
-	if err != nil {
-		return nil, fmt.Errorf("run server: %w", err)
-	}
-
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-		defer cancel()
-
-		err = srv.HTTPServer.Shutdown(ctx)
-		if err != nil {
-			t.Log(err)
-		}
-	}()
-
-	resp, err := http.Get(fmt.Sprintf("http://%s:%d%s", options.Host, options.Port, reqUrl))
+	resp, err := tSrv.Client().Get(tSrv.URL + reqUrl)
 	if err != nil {
 		return nil, fmt.Errorf("get request: %w", err)
 	}
@@ -159,7 +136,7 @@ func TestServerMiddleware(t *testing.T) {
 		route          string
 		url            string
 		expectedStatus int
-		middleware     []alice.Constructor
+		middleware     []Middleware
 		handler        HandlerFunc
 	}{
 		{
@@ -167,7 +144,7 @@ func TestServerMiddleware(t *testing.T) {
 			route:          "GET /req-id",
 			url:            "/req-id",
 			expectedStatus: http.StatusOK,
-			middleware: []alice.Constructor{
+			middleware: []Middleware{
 				RequestIDMiddleware,
 			},
 			handler: func(ctx Context) error {
@@ -197,7 +174,7 @@ func TestServerMiddleware(t *testing.T) {
 			route:          "GET /panic",
 			url:            "/panic",
 			expectedStatus: http.StatusInternalServerError,
-			middleware: []alice.Constructor{
+			middleware: []Middleware{
 				RecoveryMiddleware,
 			},
 			handler: func(ctx Context) error {
@@ -231,7 +208,7 @@ func TestServerSessions(t *testing.T) {
 		route          string
 		url            string
 		expectedStatus int
-		middleware     []alice.Constructor
+		middleware     []Middleware
 		handler        HandlerFunc
 	}{
 		{

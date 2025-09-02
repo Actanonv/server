@@ -10,7 +10,6 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 
-	"github.com/justinas/alice"
 	"github.com/mayowa/templates"
 )
 
@@ -18,7 +17,7 @@ type MuxOptions struct {
 	Host        string
 	Port        int
 	Public      string
-	Middlewares []alice.Constructor
+	Middlewares []Middleware
 	Routes      []Route
 	Log         *slog.Logger
 	LogRequests bool
@@ -36,14 +35,12 @@ type ServerMux struct {
 	Port   int
 	Public string
 
-	Middlewares []alice.Constructor
-	Routes      []Route
-	log         *slog.Logger
-
-	Mux          *http.ServeMux
+	Middleware   []Middleware
 	HTTPServer   *http.Server
+	routes       []Route
+	log          *slog.Logger
+	mux          *http.ServeMux
 	templates    *templates.Template
-	chain        *alice.Chain
 	routeMounted bool
 	logRequests  bool
 	sessionMgr   *scs.SessionManager
@@ -53,12 +50,12 @@ func Init(option MuxOptions) *ServerMux {
 	mux := http.NewServeMux()
 
 	srv := &ServerMux{
-		Mux:         mux,
+		mux:         mux,
 		Host:        option.Host,
 		Port:        option.Port,
 		Public:      option.Public,
-		Middlewares: option.Middlewares,
-		Routes:      option.Routes,
+		Middleware:  option.Middlewares,
+		routes:      option.Routes,
 		log:         option.Log,
 		logRequests: option.LogRequests,
 		templates:   option.Templates,
@@ -71,26 +68,50 @@ func Init(option MuxOptions) *ServerMux {
 
 	srv.HTTPServer = &http.Server{}
 
+	var s http.Handler = srv
+	if srv.sessionMgr != nil {
+		s = srv.sessionMgr.LoadAndSave(s)
+	}
+	srv.HTTPServer.Handler = s
+
 	return srv
 }
 
 func (s *ServerMux) Route() error {
-	chain := alice.New(s.Middlewares...)
-	s.chain = &chain
-
+	chain := Chain(s.Middleware)
 	pubFolder := s.Public
 	if pubFolder == "" {
 		pubFolder = "./public"
 	}
 
-	s.Mux.Handle("/public/", s.chain.Then(http.StripPrefix("/public", http.FileServer(http.Dir(pubFolder)))))
-
-	for _, r := range s.Routes {
-		s.Mux.Handle(r.Match, chain.Then(r.Handler))
+	s.mux.Handle("/public/", http.StripPrefix("/public", http.FileServer(http.Dir(pubFolder))))
+	root := http.NewServeMux()
+	for _, r := range s.routes {
+		root.Handle(r.Match, r.Handler)
 	}
 
+	s.mux.Handle("/", chain.Then(root))
 	s.routeMounted = true
 	return nil
+}
+
+func (s *ServerMux) Handle(pattern string, handler http.Handler) {
+	if s.routeMounted {
+		s.log.Warn("routes already mounted")
+		return
+	}
+
+	s.routes = append(s.routes, Route{pattern, handler})
+}
+
+func (s *ServerMux) HandleFunc(pattern string, handler HandlerFunc) {
+	s.Handle(pattern, handler)
+}
+
+func (s *ServerMux) Group(pattern string, fn func(srv *http.ServeMux)) {
+	grp := http.NewServeMux()
+	fn(grp)
+	s.Handle(pattern, grp)
 }
 
 var ErrRoutesNotMounted = errors.New("routes not mounted")
@@ -103,13 +124,7 @@ func (s *ServerMux) Run() error {
 	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
 	slog.Info("listening on", "addr", addr)
 
-	var srv http.Handler = s
-	if s.sessionMgr != nil {
-		srv = s.sessionMgr.LoadAndSave(s)
-	}
-
 	s.HTTPServer.Addr = addr
-	s.HTTPServer.Handler = srv
 	return s.HTTPServer.ListenAndServe()
 }
 
@@ -119,13 +134,13 @@ func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !s.logRequests {
-		s.Mux.ServeHTTP(w, r)
+		s.mux.ServeHTTP(w, r)
 		return
 	}
 
 	start := time.Now()
 	rw := &ResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-	s.Mux.ServeHTTP(rw, r)
+	s.mux.ServeHTTP(rw, r)
 	s.log.Info(r.RequestURI, "method", r.Method, "path", r.URL.Path, "status", rw.statusCode, "duration", time.Since(start))
 
 }

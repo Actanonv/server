@@ -27,39 +27,7 @@ Defines a route with a URL pattern and a handler function.
 ```go
 type Route struct {
     Match     string
-    HandlerFn HandlerFunc
-}
-
-
-Collecting workspace information```markdown
-# Server Package
-
-This package provides a lightweight HTTP server framework with support for middleware, templating, and structured logging. It is designed to simplify the process of building web applications by offering a modular and extensible architecture.
-
-## Features
-
-- **Routing**: Define routes with custom handlers using the `Route` struct.
-- **Middleware**: Add middleware using the `alice` library for request processing.
-- **Templating**: Render HTML templates with the `templates` package.
-- **Logging**: Structured logging with customizable log levels and formats.
-- **Session Management**: Optional session management using `scs`.
-
-## Key Components
-
-### `ServerMux`
-The main server struct that manages routes, middleware, and server configuration.
-
-- **Initialization**: Use `Init(options Options)` to create a new server instance.
-- **Routing**: Call `Route()` to set up routes and middleware.
-- **Running**: Start the server with `Run()`.
-
-### `Route`
-Defines a route with a URL pattern and a handler function.
-
-```go
-type Route struct {
-    Match     string
-    HandlerFn HandlerFunc
+    Handler   http.Handler
 }
 ```
 
@@ -108,9 +76,9 @@ func main() {
         Routes: []server.Route{
             {
                 Match: "/",
-                HandlerFn: func(ctx server.Context) error {
+                Handler: server.HandlerFunc(func (ctx server.Context) error {
                     return ctx.String(200, "Hello, World!")
-                },
+                }),
             },
         },
         Middlewares: []alice.Constructor{
