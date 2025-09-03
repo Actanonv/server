@@ -18,7 +18,8 @@ This package provides a lightweight HTTP server framework with support for middl
 The main server struct that manages routes, middleware, and server configuration.
 
 - **Initialization**: Use `Init(options Options)` to create a new server instance.
-- **Routing**: Call `Route()` to set up routes and middleware.
+- **Routing**: use `Handle`,  `HandleFunc`, or `Group` to add routes then call `Route()` to set up routes and middleware. 
+Calling `Route()` is optional as it will be called automatically when `Run()` is called.
 - **Running**: Start the server with `Run()`.
 
 ### `Route`
