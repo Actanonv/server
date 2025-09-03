@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -143,6 +144,54 @@ func TestServerMux_Group(t *testing.T) {
 		return
 	}
 	assert.Equal(t, "Hello, World!", buff.String())
+
+}
+
+func TestServerMux_ChainedGroup(t *testing.T) {
+	options := MuxOptions{}
+	srv := Init(options)
+	if srv == nil {
+		require.Error(t, errors.New("server not initialized"))
+		return
+	}
+
+	srv.Group("/greet", func(srv *ServerMux) {
+		srv.Middleware = []Middleware{
+			func(next http.Handler) http.Handler {
+				return HandlerFunc(func(ctx Context) error {
+					r := ctx.Request()
+					r = r.WithContext(context.WithValue(r.Context(), "age", 22))
+
+					next.ServeHTTP(ctx.Response(), r)
+					return nil
+				})
+			},
+		}
+
+		srv.HandleFunc("/hello", func(ctx Context) error {
+			age := ctx.Request().Context().Value("age")
+			return ctx.String(http.StatusOK, fmt.Sprint("Hello, ", age, " year old World!"))
+		})
+	})
+
+	if err := srv.Route(); err != nil {
+		require.Error(t, err)
+		return
+	}
+
+	resp, err := runTestServer(t, srv, "/greet/hello")
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	buff := new(bytes.Buffer)
+	_, err = io.Copy(buff, resp.Body)
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+	assert.Equal(t, "Hello, 22 year old World!", buff.String())
 
 }
 
