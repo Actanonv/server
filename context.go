@@ -29,14 +29,16 @@ type Context interface {
 }
 
 type contextImpl struct {
-	w  http.ResponseWriter
-	r  *http.Request
-	hx *htmx.HTMX
+	w   http.ResponseWriter
+	r   *http.Request
+	hx  *htmx.HTMX
+	srv *Server
 }
 
 func newContextImpl(w http.ResponseWriter, r *http.Request) *contextImpl {
 	ctx := &contextImpl{w: w, r: r}
 	ctx.hx = htmx.New(w, r)
+	ctx.srv = r.Context().Value("_server_").(*Server)
 	return ctx
 }
 
@@ -51,12 +53,12 @@ func (c *contextImpl) Response() http.ResponseWriter {
 var ErrTemplatesNotInitialized = errors.New("templates not initialized")
 
 func (c *contextImpl) Render(status int, ctx RenderOpt) error {
-	if templateMgr == nil {
+	if c.srv != nil && c.srv.templateMgr == nil {
 		return ErrTemplatesNotInitialized
 	}
 
 	out := new(bytes.Buffer)
-	if err := templateMgr.Render(out, ctx); err != nil {
+	if err := c.srv.templateMgr.Render(out, ctx); err != nil {
 		return err
 	}
 
@@ -85,10 +87,15 @@ func (c *contextImpl) String(code int, out string) error {
 
 func (c *contextImpl) Log() *slog.Logger {
 	logger, ok := c.r.Context().Value(scopedLoggerKey).(*slog.Logger)
-	if !ok || logger == nil {
-		return appLog
+	if ok && logger != nil {
+		return logger
 	}
-	return logger
+
+	if c.srv != nil && c.srv.log != nil {
+		return c.srv.log
+	}
+
+	return appLog
 }
 
 const HeaderContentType = "Content-Type"

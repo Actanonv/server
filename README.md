@@ -22,23 +22,6 @@ The main server struct that manages routes, middleware, and server configuration
 Calling `Route()` is optional as it will be called automatically when `Run()` is called.
 - **Running**: Start the server with `Run()`.
 
-### `Route`
-Defines a route with a URL pattern and a handler function.
-
-```go
-type Route struct {
-    Match     string
-    Handler   http.Handler
-}
-```
-
-### `HandlerFunc`
-Custom handler type that operates on a `Context` object.
-
-```go
-type HandlerFunc func(Context) error
-```
-
 ### `Context`
 Provides utilities for handling requests and responses.
 
@@ -47,10 +30,11 @@ Provides utilities for handling requests and responses.
 - `Render(status int, ctx RenderOpt)`: Render an HTML template.
 - `String(code int, out string)`: Send a plain text response.
 - `Log()`: Access a scoped logger.
+- `Session()`: Access the session manager.
+- `Redirect(statusCode int, url string)`: Redirect the client to a new URL.
 
 ### Middleware
 Predefined middleware for common tasks:
-- `RemoveTrailingSlashMiddleware`: Removes trailing slashes from URLs.
 - `RequestIDMiddleware`: Adds a unique request ID to each request.
 - `RecoveryMiddleware`: Recovers from panics and logs errors.
 
@@ -66,32 +50,56 @@ Initialize templates with `InitTemplates` to render HTML views.
 package main
 
 import (
-    "github.com/actanonv/server"
-    "github.com/justinas/alice"
+	"net/http"
+	"context"
+	"log/slog"
+	"os"
+	"fmt"
+	
+	"github.com/actanonv/server"
 )
 
 func main() {
-    options := server.Options{
-        Host: "localhost",
-        Port: 8080,
-        Routes: []server.Route{
-            {
-                Match: "/",
-                Handler: server.HandlerFunc(func (ctx server.Context) error {
-                    return ctx.String(200, "Hello, World!")
-                }),
-            },
-        },
-        Middlewares: []alice.Constructor{
-            server.RemoveTrailingSlashMiddleware,
-            server.RequestIDMiddleware,
-            server.RecoveryMiddleware,
-        },
-    }
+	options := server.Options{
+		Host: "localhost",
+		Port: 8080,
+		Middleware: []server.Middleware{
+			server.RequestIDMiddleware,
+			server.RecoveryMiddleware,
+		},
+	}
 
-    srv := server.Init(options)
-    srv.Route()
-    srv.Run()
+	srv := server.Init(options)
+	srv.HandleFunc("/", func(ctx server.Context) error {
+		return ctx.String(http.StatusOK, "Hello, World!")
+	})
+
+	srv.Group("/greet", func(srv *server.Server) {
+		srv.Middleware = []server.Middleware{
+			func(next http.Handler) http.Handler {
+				return server.HandlerFunc(func(ctx server.Context) error {
+					r := ctx.Request()
+					r = r.WithContext(context.WithValue(r.Context(), "age", 22))
+
+					next.ServeHTTP(ctx.Response(), r)
+					return nil
+				})
+			},
+		}
+
+		srv.HandleFunc("/hello", func(ctx server.Context) error {
+			age := ctx.Request().Context().Value("age")
+			return ctx.String(http.StatusOK, fmt.Sprint("Hello, ", age ,"year old Grouped World!"))
+		})
+		srv.HandleFunc("/goodbye", func(ctx server.Context) error {
+			return ctx.String(http.StatusOK, "Goodbye, Grouped World!")
+		})
+	})
+
+	if err := srv.Run(); err != nil {
+		slog.Error("Server run failed", "error", err)
+		os.Exit(1)
+	}
 }
 ```
 

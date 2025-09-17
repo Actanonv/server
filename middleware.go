@@ -31,9 +31,15 @@ const RequestIDHeaderKey string = "X-Request-ID"
 
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srvr := r.Context().Value("_server_")
+		logr := appLog
+		if srvr != nil && srvr.(*Server).log != nil {
+			logr = srvr.(*Server).log
+		}
+
 		requestID := uuid.New().String()
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
-		ctx = context.WithValue(ctx, scopedLoggerKey, appLog.With("reqID", requestID))
+		ctx = context.WithValue(ctx, scopedLoggerKey, logr.With("reqID", requestID))
 		*r = *r.WithContext(ctx)
 		w.Header().Set(RequestIDHeaderKey, requestID)
 		next.ServeHTTP(w, r)

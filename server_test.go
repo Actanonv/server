@@ -17,39 +17,37 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	options := MuxOptions{
-		Host:        "localhost",
-		Port:        4000,
-		Public:      "",
-		Middlewares: nil,
-		Log:         nil,
-		Templates:   nil,
-		SessionMgr:  nil,
+	options := Options{
+		Host:       "localhost",
+		Port:       4000,
+		Public:     "",
+		Middleware: nil,
+		Log:        nil,
+		Templates:  nil,
+		SessionMgr: nil,
 	}
 
-	srv := Init(options)
+	srv, _ := Init(options)
 
 	assert := assert.New(t)
 	assert.NotNil(srv)
 	assert.Equal(options.Host, srv.Host)
 	assert.Equal(options.Port, srv.Port)
 	assert.Equal(options.Public, srv.Public)
-	assert.Equal(options.Middlewares, srv.Middleware)
+	assert.Equal(options.Middleware, srv.Middleware)
 	assert.Equal(srv.log, appLog)
 	assert.Equal(options.LogRequests, srv.logRequests)
-	assert.Equal(options.Templates, srv.templates)
+	assert.Nil(srv.templateMgr)
 	assert.Equal(options.SessionMgr, srv.sessionMgr)
 }
 
-func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (*http.Response, error) {
+func runServerForTest(t *testing.T, options Options, reqUrl string) (*http.Response, error) {
 	t.Helper()
 
 	var err error
 
-	srv := Init(options)
-	if srv == nil {
-		return nil, errors.New("server not initialized")
-	}
+	srv, err := Init(options)
+	require.NoError(t, err, "server init failed")
 
 	if err = srv.Route(); err != nil {
 		return nil, err
@@ -58,7 +56,7 @@ func runServerForTest(t *testing.T, options MuxOptions, reqUrl string) (*http.Re
 	return runTestServer(t, srv, reqUrl)
 }
 
-func runTestServer(t *testing.T, srv *ServerMux, reqURl string) (*http.Response, error) {
+func runTestServer(t *testing.T, srv *Server, reqURl string) (*http.Response, error) {
 	t.Helper()
 	if srv == nil {
 		return nil, errors.New("server not initialized")
@@ -79,12 +77,9 @@ func runTestServer(t *testing.T, srv *ServerMux, reqURl string) (*http.Response,
 }
 
 func TestServerMux_Handle(t *testing.T) {
-	options := MuxOptions{}
-	srv := Init(options)
-	if srv == nil {
-		require.Error(t, errors.New("server not initialized"))
-		return
-	}
+	options := Options{}
+	srv, err := Init(options)
+	require.NoError(t, err, "server init failed")
 
 	srv.HandleFunc("/hello", func(ctx Context) error {
 		ctx.String(http.StatusOK, "Hello, World!")
@@ -113,14 +108,11 @@ func TestServerMux_Handle(t *testing.T) {
 }
 
 func TestServerMux_Group(t *testing.T) {
-	options := MuxOptions{}
-	srv := Init(options)
-	if srv == nil {
-		require.Error(t, errors.New("server not initialized"))
-		return
-	}
+	options := Options{}
+	srv, err := Init(options)
+	require.NoError(t, err, "server init failed")
 
-	srv.Group("/greet", func(srv *ServerMux) {
+	srv.Group("/greet", func(srv *Server) {
 		srv.HandleFunc("/hello", func(ctx Context) error {
 			return ctx.String(http.StatusOK, "Hello, World!")
 		})
@@ -148,14 +140,11 @@ func TestServerMux_Group(t *testing.T) {
 }
 
 func TestServerMux_ChainedGroup(t *testing.T) {
-	options := MuxOptions{}
-	srv := Init(options)
-	if srv == nil {
-		require.Error(t, errors.New("server not initialized"))
-		return
-	}
+	options := Options{}
+	srv, err := Init(options)
+	require.NoError(t, err, "server init failed")
 
-	srv.Group("/greet", func(srv *ServerMux) {
+	srv.Group("/greet", func(srv *Server) {
 		srv.Middleware = []Middleware{
 			func(next http.Handler) http.Handler {
 				return HandlerFunc(func(ctx Context) error {
@@ -197,10 +186,10 @@ func TestServerMux_ChainedGroup(t *testing.T) {
 
 func TestServerRendering(t *testing.T) {
 
-	tMgr, err := InitTemplates("./testData/templates", templates.TemplateOptions{
-		Ext: ".tmpl",
-	})
-	require.NoError(t, err)
+	tplOptions := TemplateOptions{
+		Root: "./testData/templates",
+		Ext:  ".tmpl",
+	}
 
 	test := []struct {
 		name           string
@@ -238,7 +227,7 @@ func TestServerRendering(t *testing.T) {
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
 			options := defaultOptions
-			options.Templates = tMgr
+			options.Templates = &tplOptions
 			options.Routes = []Route{
 				{Match: tt.route, Handler: tt.handler},
 			}
@@ -254,7 +243,7 @@ func TestServerRendering(t *testing.T) {
 	}
 }
 
-var defaultOptions = MuxOptions{
+var defaultOptions = Options{
 	Host: "localhost",
 	Port: 8923,
 }
@@ -316,7 +305,7 @@ func TestServerMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			options := defaultOptions
-			options.Middlewares = tt.middleware
+			options.Middleware = tt.middleware
 			options.Routes = []Route{
 				{Match: tt.route, Handler: tt.handler},
 			}

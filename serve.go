@@ -10,20 +10,30 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
-
 	"github.com/mayowa/templates"
+	"html/template"
+	"io/fs"
 )
 
-type MuxOptions struct {
+type Options struct {
 	Host        string
 	Port        int
 	Public      string
-	Middlewares []Middleware
+	Middleware  []Middleware
 	Routes      []Route
 	Log         *slog.Logger
 	LogRequests bool
-	Templates   *templates.Template
+	Templates   *TemplateOptions
 	SessionMgr  *scs.SessionManager
+}
+
+type TemplateOptions struct {
+	Root      string
+	Ext       string
+	FuncMap   template.FuncMap
+	PathToSVG string
+	FS        fs.FS
+	Debug     bool
 }
 
 type Route struct {
@@ -31,7 +41,7 @@ type Route struct {
 	Handler http.Handler
 }
 
-type ServerMux struct {
+type Server struct {
 	Host   string
 	Port   int
 	Public string
@@ -41,26 +51,30 @@ type ServerMux struct {
 	routes       []Route
 	log          *slog.Logger
 	mux          *http.ServeMux
-	templates    *templates.Template
+	templateMgr  *templates.Template
 	routeMounted bool
 	logRequests  bool
 	sessionMgr   *scs.SessionManager
 }
 
-func Init(option MuxOptions) *ServerMux {
+func Init(option Options) (*Server, error) {
 	mux := http.NewServeMux()
 
-	srv := &ServerMux{
+	srv := &Server{
 		mux:         mux,
 		Host:        option.Host,
 		Port:        option.Port,
 		Public:      option.Public,
-		Middleware:  option.Middlewares,
+		Middleware:  option.Middleware,
 		routes:      option.Routes,
 		log:         option.Log,
 		logRequests: option.LogRequests,
-		templates:   option.Templates,
 		sessionMgr:  option.SessionMgr,
+	}
+	if option.Templates != nil {
+		if err := srv.initTemplates(*option.Templates); err != nil {
+			return nil, err
+		}
 	}
 
 	if srv.log == nil {
@@ -75,12 +89,29 @@ func Init(option MuxOptions) *ServerMux {
 	}
 	srv.HTTPServer.Handler = s
 
-	return srv
+	return srv, nil
+}
+
+func (s *Server) initTemplates(options TemplateOptions) error {
+	opts := templates.TemplateOptions{
+		Ext:       options.Ext,
+		FuncMap:   options.FuncMap,
+		PathToSVG: options.PathToSVG,
+		FS:        options.FS,
+		Debug:     options.Debug,
+	}
+	tplMgr, err := templates.New(options.Root, &opts)
+	if err != nil {
+		return err
+	}
+
+	s.templateMgr = tplMgr
+	return nil
 }
 
 // Route mounts the routes to the server. It should be called after all routes are added
 // to the server. It is called from Run() if not called before.
-func (s *ServerMux) Route() error {
+func (s *Server) Route() error {
 	if s.routeMounted {
 		return nil
 	}
@@ -102,7 +133,7 @@ func (s *ServerMux) Route() error {
 	return nil
 }
 
-func (s *ServerMux) Handle(pattern string, handler http.Handler) {
+func (s *Server) Handle(pattern string, handler http.Handler) {
 	if s.routeMounted {
 		s.log.Warn("routes already mounted")
 		return
@@ -111,13 +142,13 @@ func (s *ServerMux) Handle(pattern string, handler http.Handler) {
 	s.routes = append(s.routes, Route{pattern, handler})
 }
 
-func (s *ServerMux) HandleFunc(pattern string, handler HandlerFunc) {
+func (s *Server) HandleFunc(pattern string, handler HandlerFunc) {
 	s.Handle(pattern, handler)
 }
 
-func (s *ServerMux) Group(pattern string, fn func(srv *ServerMux)) {
+func (s *Server) Group(pattern string, fn func(srv *Server)) {
 	grp := http.NewServeMux()
-	sub := &ServerMux{}
+	sub := &Server{}
 	fn(sub)
 
 	for _, r := range sub.routes {
@@ -134,7 +165,7 @@ func (s *ServerMux) Group(pattern string, fn func(srv *ServerMux)) {
 
 var ErrRoutesNotMounted = errors.New("routes not mounted")
 
-func (s *ServerMux) Run() error {
+func (s *Server) Run() error {
 	if err := s.Route(); err != nil {
 		return err
 	}
@@ -146,7 +177,8 @@ func (s *ServerMux) Run() error {
 	return s.HTTPServer.ListenAndServe()
 }
 
-func (s *ServerMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r = r.WithContext(context.WithValue(r.Context(), "_server_", s))
 	if s.sessionMgr != nil {
 		r = r.WithContext(context.WithValue(r.Context(), "_sessMgr_", s.sessionMgr))
 	}
