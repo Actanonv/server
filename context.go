@@ -13,7 +13,10 @@ import (
 )
 
 // RenderOpt is a short alias for templates.RenderOption
-type RenderOpt = templates.RenderOption
+type RenderOpt struct {
+	templates.RenderOption
+	NotDone bool
+}
 
 var _ Context = &contextImpl{}
 
@@ -58,12 +61,14 @@ func (c *contextImpl) Render(status int, ctx RenderOpt) error {
 	}
 
 	out := new(bytes.Buffer)
-	if err := c.srv.templateMgr.Render(out, ctx); err != nil {
+	if err := c.srv.templateMgr.Render(out, ctx.RenderOption); err != nil {
 		return err
 	}
 
-	c.writeContentType("text/html; charset=utf-8")
-	c.Response().WriteHeader(status)
+	if !ctx.NotDone {
+		c.writeContentType("text/html; charset=utf-8")
+		c.Response().WriteHeader(status)
+	}
 	_, err := io.Copy(c.Response(), out)
 	return err
 }
