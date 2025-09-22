@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,7 @@ type Context interface {
 	String(code int, out string) error
 	Log() *slog.Logger
 	Session() *sessHelper
+	Error(code int, msg any, args ...errorPageCtxArg)
 }
 
 type contextImpl struct {
@@ -112,6 +114,41 @@ func (c *contextImpl) Log() *slog.Logger {
 	}
 
 	return appLog
+}
+
+type errorPageCtx struct {
+	Msg  string
+	Args []errorPageCtxArg
+}
+type errorPageCtxArg struct {
+	Key   string
+	Value any
+}
+
+// Error renders an error page with the specified status code and message, supporting HTMX-specific handling when applicable.
+// The status code is used to determine the template name, e.g. 404.page or 404.hx
+func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) {
+	suffix := "page"
+	if c.HTMX().IsHxRequest() {
+		suffix = "hx"
+	}
+	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
+
+	errCtx := errorPageCtx{Msg: fmt.Sprintf("%v", msg), Args: args}
+	if err := c.Render(statusCode, RenderOpt{Template: tplName, Data: errCtx}); err != nil {
+		c.Log().Error("failed to render error page", "code", statusCode, "suffix", suffix, "error", err)
+	}
+
+	if c.HTMX().IsHxRequest() {
+		trigger := htmx.NewTrigger().AddEventObject("serverCtxError", map[string]any{
+			"code": statusCode,
+			"msg":  errCtx.Msg,
+			"args": errCtx.Args,
+		})
+		c.HTMX().TriggerAfterSwapWithObject(trigger)
+	}
+
+	c.Response().WriteHeader(statusCode)
 }
 
 const HeaderContentType = "Content-Type"
