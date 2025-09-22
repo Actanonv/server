@@ -10,6 +10,8 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := newContextImpl(w, r)
 	err := h(ctx)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		ctx.Response().WriteHeader(http.StatusInternalServerError)
+		ctx.Log().Error("error", err)
+		return
 	}
 }
