@@ -14,8 +14,12 @@ import (
 
 // RenderOpt is a short alias for templates.RenderOption
 type RenderOpt struct {
-	templates.RenderOption
-	NotDone bool
+	Layout       string
+	Template     string
+	RenderString bool
+	Others       []string
+	Data         any
+	NotDone      bool
 }
 
 var _ Context = &contextImpl{}
@@ -61,7 +65,14 @@ func (c *contextImpl) Render(status int, ctx RenderOpt) error {
 	}
 
 	out := new(bytes.Buffer)
-	if err := c.srv.templateMgr.Render(out, ctx.RenderOption); err != nil {
+	tplCtx := templates.RenderOption{
+		Layout:       ctx.Layout,
+		Template:     ctx.Template,
+		RenderString: ctx.RenderString,
+		Others:       ctx.Others,
+		Data:         ctx.Data,
+	}
+	if err := c.srv.templateMgr.Render(out, tplCtx); err != nil {
 		return err
 	}
 

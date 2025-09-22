@@ -55,7 +55,7 @@ import (
 	"log/slog"
 	"os"
 	"fmt"
-	
+
 	"github.com/actanonv/server"
 )
 
@@ -69,7 +69,11 @@ func main() {
 		},
 	}
 
-	srv := server.Init(options)
+	srv, err := server.Init(options)
+	if err != nil {
+		slog.Error("Server initialization failed", "error", err)
+		os.Exit(1)
+	}
 	srv.HandleFunc("/", func(ctx server.Context) error {
 		return ctx.String(http.StatusOK, "Hello, World!")
 	})
@@ -89,7 +93,7 @@ func main() {
 
 		srv.HandleFunc("/hello", func(ctx server.Context) error {
 			age := ctx.Request().Context().Value("age")
-			return ctx.String(http.StatusOK, fmt.Sprint("Hello, ", age ,"year old Grouped World!"))
+			return ctx.String(http.StatusOK, fmt.Sprint("Hello, ", age, "year old Grouped World!"))
 		})
 		srv.HandleFunc("/goodbye", func(ctx server.Context) error {
 			return ctx.String(http.StatusOK, "Goodbye, Grouped World!")
