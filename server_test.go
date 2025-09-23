@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/mayowa/templates"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -217,7 +216,7 @@ func TestServerRendering(t *testing.T) {
 			expectedBody:   "Hello, World!",
 			expectedStatus: http.StatusOK,
 			handler: func(ctx Context) error {
-				return ctx.Render(http.StatusOK, templates.RenderOption{
+				return ctx.Render(http.StatusOK, RenderOpt{
 					Template: "hello",
 				})
 			},

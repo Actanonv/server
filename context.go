@@ -34,7 +34,7 @@ type Context interface {
 	String(code int, out string) error
 	Log() *slog.Logger
 	Session() *sessHelper
-	Error(code int, msg any, args ...errorPageCtxArg)
+	Error(code int, msg any, args ...errorPageCtxArg) error
 }
 
 type contextImpl struct {
@@ -127,14 +127,23 @@ type errorPageCtxArg struct {
 
 // Error renders an error page with the specified status code and message, supporting HTMX-specific handling when applicable.
 // The status code is used to determine the template name, e.g. 404.page or 404.hx
-func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) {
+func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) error {
 	suffix := "page"
 	if c.HTMX().IsHxRequest() {
 		suffix = "hx"
 	}
 	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
 
-	errCtx := errorPageCtx{Msg: fmt.Sprintf("%v", msg), Args: args}
+	errCtx := errorPageCtx{Args: args}
+	msgIsError := false
+	switch m := msg.(type) {
+	default:
+		errCtx.Msg = fmt.Sprintf("%v", m)
+	case error:
+		errCtx.Msg = m.Error()
+		msgIsError = true
+	}
+
 	if err := c.Render(statusCode, RenderOpt{Template: tplName, Data: errCtx}); err != nil {
 		c.Log().Error("failed to render error page", "code", statusCode, "suffix", suffix, "error", err)
 	}
@@ -149,6 +158,11 @@ func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) {
 	}
 
 	c.Response().WriteHeader(statusCode)
+	if msgIsError {
+		return msg.(error)
+	}
+
+	return nil
 }
 
 const HeaderContentType = "Content-Type"
