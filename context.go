@@ -32,6 +32,8 @@ type Context interface {
 	Redirect(status int, url string) error
 	HTMX() *htmx.HTMX
 	String(code int, out string) error
+	// Status sets the response status code
+	Status(code int) error
 	Log() *slog.Logger
 	Session() *sessHelper
 	Error(code int, msg any, args ...errorPageCtxArg) error
@@ -101,6 +103,11 @@ func (c *contextImpl) String(code int, out string) error {
 
 	_, err := c.Response().Write([]byte(out))
 	return err
+}
+
+func (c *contextImpl) Status(code int) error {
+	c.Response().WriteHeader(code)
+	return nil
 }
 
 func (c *contextImpl) Log() *slog.Logger {
