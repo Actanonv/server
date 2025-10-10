@@ -31,6 +31,7 @@ type Context interface {
 	Render(status int, ctx RenderOpt) error
 	Redirect(status int, url string) error
 	HTMX() *htmx.HTMX
+	Trigger() *htmx.Trigger
 	String(code int, out string) error
 	// Status sets the response status code
 	Status(code int) error
@@ -40,16 +41,18 @@ type Context interface {
 }
 
 type contextImpl struct {
-	w   http.ResponseWriter
-	r   *http.Request
-	hx  *htmx.HTMX
-	srv *Server
+	w         http.ResponseWriter
+	r         *http.Request
+	hx        *htmx.HTMX
+	hxTrigger *htmx.Trigger
+	srv       *Server
 }
 
 func newContextImpl(w http.ResponseWriter, r *http.Request) *contextImpl {
 	ctx := &contextImpl{w: w, r: r}
 	ctx.hx = htmx.New(w, r)
 	ctx.srv = r.Context().Value("_server_").(*Server)
+	ctx.hxTrigger = htmx.NewTrigger()
 	return ctx
 }
 
@@ -95,6 +98,10 @@ func (c *contextImpl) Redirect(statusCode int, url string) error {
 
 func (c *contextImpl) HTMX() *htmx.HTMX {
 	return c.hx
+}
+
+func (c *contextImpl) Trigger() *htmx.Trigger {
+	return c.hxTrigger
 }
 
 func (c *contextImpl) String(code int, out string) error {
