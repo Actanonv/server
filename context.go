@@ -29,7 +29,7 @@ type Context interface {
 	Request() *http.Request
 	Response() http.ResponseWriter
 	Render(status int, ctx RenderOpt) error
-	Redirect(status int, url string) error
+	Redirect(url string) error
 	HTMX() *htmx.HTMX
 	Trigger() *htmx.Trigger
 	String(code int, out string) error
@@ -91,8 +91,13 @@ func (c *contextImpl) Render(status int, ctx RenderOpt) error {
 	return err
 }
 
-func (c *contextImpl) Redirect(statusCode int, url string) error {
-	http.Redirect(c.Response(), c.Request(), url, statusCode)
+func (c *contextImpl) Redirect(url string) error {
+	if c.HTMX().IsHxRequest() {
+		c.HTMX().Redirect(url)
+		return nil
+	}
+
+	http.Redirect(c.Response(), c.Request(), url, http.StatusSeeOther)
 	return nil
 }
 
