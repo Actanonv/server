@@ -206,6 +206,10 @@ func (h *sessHelper) Put(key string, val interface{}) {
 	h.sess.Put(h.r.Context(), key, val)
 }
 
+func (h *sessHelper) Exists(key string) bool {
+	return h.sess.Exists(h.r.Context(), key)
+}
+
 func (h *sessHelper) Mgr() *scs.SessionManager {
 	return h.sess
 }
