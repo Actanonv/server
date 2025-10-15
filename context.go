@@ -154,9 +154,9 @@ func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) er
 	}
 
 	suffix := "page"
-	if c.HTMX().IsHxRequest() {
-		suffix = "hx"
-	}
+	// if c.HTMX().IsHxRequest() {
+	// 	suffix = "hx"
+	// }
 	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
 	c.errSet = true
 	errCtx := errorPageCtx{Args: args}
@@ -169,12 +169,6 @@ func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) er
 		msgIsError = true
 	}
 
-	if err := c.Render(statusCode, RenderOpt{Template: tplName, Data: errCtx}); err != nil {
-		c.Log().Error("failed to render error page", "code", statusCode, "suffix", suffix, "error", err)
-		c.Response().WriteHeader(http.StatusInternalServerError)
-		return fmt.Errorf("failed to render error page: %w", err)
-	}
-
 	if c.HTMX().IsHxRequest() {
 		// deliberately ignores c.Trigger() so as to override it
 		trigger := htmx.NewTrigger().AddEventObject("serverCtxError", map[string]any{
@@ -183,6 +177,11 @@ func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) er
 			"args": errCtx.Args,
 		})
 		c.HTMX().TriggerAfterSwapWithObject(trigger)
+	} else {
+		if err := c.Render(statusCode, RenderOpt{Template: tplName, Data: errCtx}); err != nil {
+			c.Log().Error("failed to render error page", "code", statusCode, "suffix", suffix, "error", err)
+			return fmt.Errorf("failed to render error page: %w", err)
+		}
 	}
 
 	c.Response().WriteHeader(statusCode)
