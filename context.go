@@ -46,6 +46,7 @@ type contextImpl struct {
 	hx        *htmx.HTMX
 	hxTrigger *htmx.Trigger
 	srv       *Server
+	errSet    bool
 }
 
 func newContextImpl(w http.ResponseWriter, r *http.Request) *contextImpl {
@@ -147,12 +148,17 @@ type errorPageCtxArg struct {
 // Error renders an error page with the specified status code and message, supporting HTMX-specific handling when applicable.
 // The status code is used to determine the template name, e.g. 404.page or 404.hx
 func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) error {
+	if c.errSet {
+		c.Log().Info("ctx.Error() ctx.isSet=true", "code", statusCode, "error", msg, "args", args)
+		return nil
+	}
+
 	suffix := "page"
 	if c.HTMX().IsHxRequest() {
 		suffix = "hx"
 	}
 	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
-
+	c.errSet = true
 	errCtx := errorPageCtx{Args: args}
 	msgIsError := false
 	switch m := msg.(type) {
@@ -165,9 +171,12 @@ func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) er
 
 	if err := c.Render(statusCode, RenderOpt{Template: tplName, Data: errCtx}); err != nil {
 		c.Log().Error("failed to render error page", "code", statusCode, "suffix", suffix, "error", err)
+		c.Response().WriteHeader(http.StatusInternalServerError)
+		return fmt.Errorf("failed to render error page: %w", err)
 	}
 
 	if c.HTMX().IsHxRequest() {
+		// deliberately ignores c.Trigger() so as to override it
 		trigger := htmx.NewTrigger().AddEventObject("serverCtxError", map[string]any{
 			"code": statusCode,
 			"msg":  errCtx.Msg,

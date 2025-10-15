@@ -11,13 +11,9 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := h(ctx)
 	if err != nil {
 		ctx.Log().Error(err.Error(), "code", http.StatusInternalServerError)
-		ctx.Response().WriteHeader(http.StatusInternalServerError)
+		ctx.Error(http.StatusInternalServerError, err.Error(), errorPageCtxArg{
+			Key: "code", Value: http.StatusInternalServerError,
+		})
 		return
-	}
-}
-
-func ErrorPage(ctx Context, err error) {
-	if err := ctx.Render(http.StatusInternalServerError, RenderOpt{Template: "500.page"}); err != nil {
-		ctx.Log().Error(err.Error(), "code", http.StatusInternalServerError)
 	}
 }
