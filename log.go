@@ -33,7 +33,7 @@ func InitLog(env ENVTypes, logLevel slog.Level, setLogDefault bool) error {
 	if env == ENVProduction || env == ENVStaging {
 		appLog = slog.New(slog.NewJSONHandler(os.Stdout, option))
 	} else {
-		appLog = slog.New(NewCustomHandler(os.Stderr, option))
+		appLog = slog.New(NewCustomLogHandler(os.Stderr, option))
 	}
 
 	if setLogDefault {
@@ -43,21 +43,21 @@ func InitLog(env ENVTypes, logLevel slog.Level, setLogDefault bool) error {
 	return nil
 }
 
-// CustomHandler is a custom slog handler that displays time (YYYY/MM/DD HH:MM:SS)
+// CustomLogHandler is a custom slog handler that displays time (YYYY/MM/DD HH:MM:SS)
 // without a key, followed by Level, Message and any other provided attributes
-type CustomHandler struct {
+type CustomLogHandler struct {
 	slog.Handler
 	opts *slog.HandlerOptions
 	w    *os.File
 }
 
-// NewCustomHandler creates a new CustomHandler that writes to w
-func NewCustomHandler(w *os.File, opts *slog.HandlerOptions) *CustomHandler {
+// NewCustomLogHandler creates a new CustomHandler that writes to w
+func NewCustomLogHandler(w *os.File, opts *slog.HandlerOptions) *CustomLogHandler {
 	if opts == nil {
 		opts = &slog.HandlerOptions{}
 	}
 
-	return &CustomHandler{
+	return &CustomLogHandler{
 		Handler: slog.NewTextHandler(w, opts),
 		opts:    opts,
 		w:       w,
@@ -65,7 +65,7 @@ func NewCustomHandler(w *os.File, opts *slog.HandlerOptions) *CustomHandler {
 }
 
 // Handle implements slog.Handler.Handle
-func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
+func (h *CustomLogHandler) Handle(ctx context.Context, r slog.Record) error {
 	timeStr := r.Time.Format("2006/01/02 15:04:05")
 
 	// Create a new record with the formatted time and same attributes
@@ -99,16 +99,16 @@ func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 // WithAttrs implements slog.Handler.WithAttrs
-func (h *CustomHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &CustomHandler{
+func (h *CustomLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &CustomLogHandler{
 		Handler: h.Handler.WithAttrs(attrs),
 		opts:    h.opts,
 	}
 }
 
 // WithGroup implements slog.Handler.WithGroup
-func (h *CustomHandler) WithGroup(name string) slog.Handler {
-	return &CustomHandler{
+func (h *CustomLogHandler) WithGroup(name string) slog.Handler {
+	return &CustomLogHandler{
 		Handler: h.Handler.WithGroup(name),
 		opts:    h.opts,
 	}
