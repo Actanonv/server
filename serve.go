@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alexedwards/scs/v2"
-	"github.com/mayowa/templates"
 	"html/template"
 	"io/fs"
+
+	"github.com/alexedwards/scs/v2"
+	"github.com/mayowa/templates"
 )
 
 type Options struct {
@@ -177,10 +178,17 @@ func (s *Server) Run() error {
 	return s.HTTPServer.ListenAndServe()
 }
 
+type CtxKey string
+
+const (
+	CtxKeyServer     CtxKey = "_server_"
+	CtxKeySessionMgr CtxKey = "_sessMgr_"
+)
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r = r.WithContext(context.WithValue(r.Context(), "_server_", s))
+	r = r.WithContext(context.WithValue(r.Context(), CtxKeyServer, s))
 	if s.sessionMgr != nil {
-		r = r.WithContext(context.WithValue(r.Context(), "_sessMgr_", s.sessionMgr))
+		r = r.WithContext(context.WithValue(r.Context(), CtxKeySessionMgr, s.sessionMgr))
 	}
 
 	if !s.logRequests {

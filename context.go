@@ -20,10 +20,11 @@ type RenderOpt struct {
 	RenderString bool
 	Others       []string
 	Data         any
-	NotDone      bool
+	// NotDone prevents Render() from calling c.Response().WriteHeader(status)
+	NotDone bool
 }
 
-var _ Context = &contextImpl{}
+var _ Context = &HandlerContext{}
 
 type Context interface {
 	Request() *http.Request
@@ -40,7 +41,7 @@ type Context interface {
 	Error(code int, msg any, args ...errorPageCtxArg) error
 }
 
-type contextImpl struct {
+type HandlerContext struct {
 	w         http.ResponseWriter
 	r         *http.Request
 	hx        *htmx.HTMX
@@ -49,25 +50,25 @@ type contextImpl struct {
 	errSet    bool
 }
 
-func newContextImpl(w http.ResponseWriter, r *http.Request) *contextImpl {
-	ctx := &contextImpl{w: w, r: r}
+func NewContext(w http.ResponseWriter, r *http.Request) *HandlerContext {
+	ctx := &HandlerContext{w: w, r: r}
 	ctx.hx = htmx.New(w, r)
-	ctx.srv = r.Context().Value("_server_").(*Server)
+	ctx.srv = r.Context().Value(CtxKeyServer).(*Server)
 	ctx.hxTrigger = htmx.NewTrigger()
 	return ctx
 }
 
-func (c *contextImpl) Request() *http.Request {
+func (c *HandlerContext) Request() *http.Request {
 	return c.r
 }
 
-func (c *contextImpl) Response() http.ResponseWriter {
+func (c *HandlerContext) Response() http.ResponseWriter {
 	return c.w
 }
 
 var ErrTemplatesNotInitialized = errors.New("templates not initialized")
 
-func (c *contextImpl) Render(status int, ctx RenderOpt) error {
+func (c *HandlerContext) Render(status int, ctx RenderOpt) error {
 	if c.srv != nil && c.srv.templateMgr == nil {
 		return ErrTemplatesNotInitialized
 	}
@@ -92,7 +93,7 @@ func (c *contextImpl) Render(status int, ctx RenderOpt) error {
 	return err
 }
 
-func (c *contextImpl) Redirect(url string) error {
+func (c *HandlerContext) Redirect(url string) error {
 	if c.HTMX().IsHxRequest() {
 		c.HTMX().Redirect(url)
 		return nil
@@ -102,15 +103,15 @@ func (c *contextImpl) Redirect(url string) error {
 	return nil
 }
 
-func (c *contextImpl) HTMX() *htmx.HTMX {
+func (c *HandlerContext) HTMX() *htmx.HTMX {
 	return c.hx
 }
 
-func (c *contextImpl) Trigger() *htmx.Trigger {
+func (c *HandlerContext) Trigger() *htmx.Trigger {
 	return c.hxTrigger
 }
 
-func (c *contextImpl) String(code int, out string) error {
+func (c *HandlerContext) String(code int, out string) error {
 	c.writeContentType("text/plain; charset=utf-8")
 	c.Response().WriteHeader(code)
 
@@ -118,12 +119,12 @@ func (c *contextImpl) String(code int, out string) error {
 	return err
 }
 
-func (c *contextImpl) Status(code int) error {
+func (c *HandlerContext) Status(code int) error {
 	c.Response().WriteHeader(code)
 	return nil
 }
 
-func (c *contextImpl) Log() *slog.Logger {
+func (c *HandlerContext) Log() *slog.Logger {
 	logger, ok := c.r.Context().Value(scopedLoggerKey).(*slog.Logger)
 	if ok && logger != nil {
 		return logger
@@ -147,7 +148,7 @@ type errorPageCtxArg struct {
 
 // Error renders an error page with the specified status code and message, supporting HTMX-specific handling when applicable.
 // The status code is used to determine the template name, e.g. 404.page or 404.hx
-func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) error {
+func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg) error {
 	if c.errSet {
 		c.Log().Info("ctx.Error() ctx.isSet=true", "code", statusCode, "error", msg, "args", args)
 		return nil
@@ -194,7 +195,7 @@ func (c *contextImpl) Error(statusCode int, msg any, args ...errorPageCtxArg) er
 
 const HeaderContentType = "Content-Type"
 
-func (c *contextImpl) writeContentType(value string) {
+func (c *HandlerContext) writeContentType(value string) {
 	header := c.Response().Header()
 	if header.Get(HeaderContentType) == "" {
 		header.Set(HeaderContentType, value)
@@ -222,8 +223,8 @@ func (h *sessHelper) Mgr() *scs.SessionManager {
 	return h.sess
 }
 
-func (c *contextImpl) Session() *sessHelper {
-	retv := c.Request().Context().Value("_sessMgr_")
+func (c *HandlerContext) Session() *sessHelper {
+	retv := c.Request().Context().Value(CtxKeySessionMgr)
 	if retv == nil {
 		return nil
 	}
