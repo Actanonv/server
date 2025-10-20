@@ -111,7 +111,7 @@ func TestServerMux_Group(t *testing.T) {
 	srv, err := Init(options)
 	require.NoError(t, err, "server init failed")
 
-	srv.Group("/greet", func(srv *Server) {
+	srv.Group("/greet", "", func(srv *Server) {
 		srv.HandleFunc("/hello", func(ctx Context) error {
 			return ctx.String(http.StatusOK, "Hello, World!")
 		})
@@ -143,7 +143,7 @@ func TestServerMux_ChainedGroup(t *testing.T) {
 	srv, err := Init(options)
 	require.NoError(t, err, "server init failed")
 
-	srv.Group("/greet", func(srv *Server) {
+	srv.Group("/greet", "", func(srv *Server) {
 		srv.Middleware = []Middleware{
 			func(next http.Handler) http.Handler {
 				return HandlerFunc(func(ctx Context) error {

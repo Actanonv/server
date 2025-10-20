@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ type TemplateOptions struct {
 type Route struct {
 	Match   string
 	Handler http.Handler
+	Name    string
 }
 
 type Server struct {
@@ -56,6 +58,7 @@ type Server struct {
 	routeMounted bool
 	logRequests  bool
 	sessionMgr   *scs.SessionManager
+	routeNames   map[string]string
 }
 
 func Init(option Options) (*Server, error) {
@@ -127,6 +130,9 @@ func (s *Server) Route() error {
 	root := http.NewServeMux()
 	for _, r := range s.routes {
 		root.Handle(r.Match, r.Handler)
+		if r.Name != "" {
+			s.routeNames[r.Name] = r.Match
+		}
 	}
 
 	s.mux.Handle("/", chain.Then(root))
@@ -134,27 +140,61 @@ func (s *Server) Route() error {
 	return nil
 }
 
-func (s *Server) Handle(pattern string, handler http.Handler) {
+type HandleOption struct {
+	name       string
+	middleware []Middleware
+}
+type HandleOptionFn func(*HandleOption)
+
+func WithName(name string) HandleOptionFn {
+	return func(o *HandleOption) {
+		o.name = name
+	}
+}
+
+func WithMiddleware(middleware ...Middleware) HandleOptionFn {
+	return func(o *HandleOption) {
+		o.middleware = middleware
+	}
+}
+func (s *Server) Handle(pattern string, handler http.Handler, args ...HandleOptionFn) {
+	var options HandleOption
+	for _, fn := range args {
+		fn(&options)
+	}
+
 	if s.routeMounted {
 		s.log.Warn("routes already mounted")
 		return
 	}
 
-	s.routes = append(s.routes, Route{pattern, handler})
+	s.routes = append(s.routes, Route{Match: pattern, Handler: handler, Name: options.name})
 }
 
-func (s *Server) HandleFunc(pattern string, handler HandlerFunc) {
-	s.Handle(pattern, handler)
+func (s *Server) HandleFunc(pattern string, handler HandlerFunc, args ...HandleOptionFn) {
+	s.Handle(pattern, handler, args...)
 }
 
-func (s *Server) Group(pattern string, fn func(srv *Server)) {
+// Group panics if a name isn't provided but named routes are registered
+func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 	grp := http.NewServeMux()
 	sub := &Server{}
 	fn(sub)
 
+	hasNamedRoutes := false
 	for _, r := range sub.routes {
 		grp.Handle(r.Match, r.Handler)
+		if r.Name != "" {
+			rtName := strings.ToLower(fmt.Sprint(name, "/", r.Name))
+			s.routeNames[rtName] = path.Join(pattern, r.Match)
+			hasNamedRoutes = true
+		}
 	}
+
+	if hasNamedRoutes && name == "" {
+		panic(fmt.Sprintf("group(%q) has named routes but no group name was provided", pattern))
+	}
+
 	if !strings.HasSuffix(pattern, "/") {
 		pattern += "/"
 	}
