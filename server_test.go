@@ -378,3 +378,67 @@ func TestServerSessions(t *testing.T) {
 		})
 	}
 }
+
+func TestServer_RouteName(t *testing.T) {
+	srv, err := Init(Options{})
+	require.NoError(t, err, "server init failed")
+
+	srv.HandleFunc("/users/{id}/profile", func(ctx Context) error {
+		return nil
+	}, WithName("userProfile"))
+	srv.HandleFunc("/users/{id}/{profile}", func(ctx Context) error {
+		return nil
+	}, WithName("userSwitch"))
+	srv.Group("/catalogs", "catalog", func(srv *Server) {
+		srv.HandleFunc("/", func(ctx Context) error { return nil }, WithName("list"))
+		srv.HandleFunc("/items/{itemId}", func(ctx Context) error { return nil }, WithName("item"))
+	})
+
+	err = srv.Route()
+	require.NoError(t, err, "routing failed")
+
+	t.Run("test single parameter", func(t *testing.T) {
+		rtn := srv.RouteName("userProfile", "id", "42")
+		assert.Equal(t, "/users/42/profile", rtn)
+	})
+
+	t.Run("test unbalanced parameters", func(t *testing.T) {
+		rtn := srv.RouteName("userProfile", "id")
+		assert.Equal(t, "/users//profile", rtn)
+	})
+
+	t.Run("test multiple parameters", func(t *testing.T) {
+		rtn := srv.RouteName("userSwitch", "id", "42", "profile", "settings")
+		assert.Equal(t, "/users/42/settings", rtn)
+	})
+
+	t.Run("test group routes", func(t *testing.T) {
+		rtn := srv.RouteName("catalog/list", "itemId", "1001")
+		assert.Equal(t, "/catalogs", rtn)
+
+		rtn = srv.RouteName("catalog/item", "itemId", "1001")
+		assert.Equal(t, "/catalogs/items/1001", rtn)
+
+	})
+
+	// tests := []struct {
+	// 	name   string
+	// 	params []string
+	// 	want   string
+	// }{
+	// 	// TODO: Add test cases.
+	// }
+	// for _, tt := range tests {
+	// 	t.Run(tt.name, func(t *testing.T) {
+	// 		s, err := server.Init(tt.option)
+	// 		if err != nil {
+	// 			t.Fatalf("could not construct receiver type: %v", err)
+	// 		}
+	// 		got := s.RouteName(tt.name, tt.params)
+	// 		// TODO: update the condition below to compare got with tt.want.
+	// 		if true {
+	// 			t.Errorf("RouteName() = %v, want %v", got, tt.want)
+	// 		}
+	// 	})
+	// }
+}

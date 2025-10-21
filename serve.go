@@ -74,6 +74,7 @@ func Init(option Options) (*Server, error) {
 		log:         option.Log,
 		logRequests: option.LogRequests,
 		sessionMgr:  option.SessionMgr,
+		routeNames:  make(map[string]string),
 	}
 	if option.Templates != nil {
 		if err := srv.initTemplates(*option.Templates); err != nil {
@@ -131,7 +132,7 @@ func (s *Server) Route() error {
 	for _, r := range s.routes {
 		root.Handle(r.Match, r.Handler)
 		if r.Name != "" {
-			s.routeNames[r.Name] = r.Match
+			s.routeNames[strings.ToLower(r.Name)] = r.Match
 		}
 	}
 
@@ -241,4 +242,32 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(rw, r)
 	s.log.Info(r.RequestURI, "method", r.Method, "path", r.URL.Path, "status", rw.statusCode, "duration", time.Since(start))
 
+}
+
+// RouteName returns the route path for the given name. If params are provided, they are used to replace
+// path parameters in the route path. Path parameters are of the format {param}.
+// group route names are prefixed with the group name, separated by a slash.
+func (s *Server) RouteName(name string, params ...string) string {
+	name = strings.ToLower(name)
+	route, found := s.routeNames[name]
+	if !found {
+		return route
+	}
+
+	// path parameters are of the format {param}
+	if len(params) > 0 {
+		if len(params)%2 != 0 {
+			params = append(params, "")
+		}
+
+		for i := 0; i < len(params); i += 2 {
+			paramKey := "{" + params[i] + "}"
+			paramVal := params[i+1]
+			route = strings.ReplaceAll(route, paramKey, paramVal)
+		}
+
+		return route
+	}
+
+	return ""
 }
