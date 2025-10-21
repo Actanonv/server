@@ -139,7 +139,7 @@ func (s *Server) Route() error {
 	for _, r := range s.routes {
 		root.Handle(r.Match, r.Handler)
 		if r.Name != "" {
-			s.routeNames[strings.ToLower(r.Name)] = r.Match
+			s.addRouteName(r.Name, r.Match)
 		}
 	}
 
@@ -165,6 +165,7 @@ func WithMiddleware(middleware ...Middleware) HandleOptionFn {
 		o.middleware = middleware
 	}
 }
+
 func (s *Server) Handle(pattern string, handler http.Handler, args ...HandleOptionFn) {
 	var options HandleOption
 	for _, fn := range args {
@@ -174,6 +175,10 @@ func (s *Server) Handle(pattern string, handler http.Handler, args ...HandleOpti
 	if s.routeMounted {
 		s.log.Warn("routes already mounted")
 		return
+	}
+
+	if len(options.middleware) > 0 {
+		handler = Chain(options.middleware).Then(handler)
 	}
 
 	s.routes = append(s.routes, Route{Match: pattern, Handler: handler, Name: options.name})
@@ -193,8 +198,7 @@ func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 	for _, r := range sub.routes {
 		grp.Handle(r.Match, r.Handler)
 		if r.Name != "" {
-			rtName := strings.ToLower(fmt.Sprint(name, "/", r.Name))
-			s.routeNames[rtName] = path.Join(pattern, r.Match)
+			s.addRouteName(fmt.Sprint(name, "/", r.Name), path.Join(pattern, r.Match))
 			hasNamedRoutes = true
 		}
 	}
@@ -277,4 +281,12 @@ func (s *Server) RouteName(name string, params ...string) string {
 	}
 
 	return ""
+}
+
+func (s *Server) addRouteName(name string, route string) {
+	s.routeNames[strings.ToLower(name)] = route
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.HTTPServer.Shutdown(ctx)
 }
