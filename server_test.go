@@ -420,25 +420,4 @@ func TestServer_RouteName(t *testing.T) {
 		assert.Equal(t, "/catalogs/items/1001", rtn)
 
 	})
-
-	// tests := []struct {
-	// 	name   string
-	// 	params []string
-	// 	want   string
-	// }{
-	// 	// TODO: Add test cases.
-	// }
-	// for _, tt := range tests {
-	// 	t.Run(tt.name, func(t *testing.T) {
-	// 		s, err := server.Init(tt.option)
-	// 		if err != nil {
-	// 			t.Fatalf("could not construct receiver type: %v", err)
-	// 		}
-	// 		got := s.RouteName(tt.name, tt.params)
-	// 		// TODO: update the condition below to compare got with tt.want.
-	// 		if true {
-	// 			t.Errorf("RouteName() = %v, want %v", got, tt.want)
-	// 		}
-	// 	})
-	// }
 }

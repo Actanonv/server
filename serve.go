@@ -98,6 +98,13 @@ func Init(option Options) (*Server, error) {
 }
 
 func (s *Server) initTemplates(options TemplateOptions) error {
+
+	fnMap := options.FuncMap
+	if fnMap == nil {
+		fnMap = make(template.FuncMap)
+	}
+	fnMap["routeName"] = s.RouteName
+
 	opts := templates.TemplateOptions{
 		Ext:       options.Ext,
 		FuncMap:   options.FuncMap,
