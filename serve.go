@@ -14,19 +14,18 @@ import (
 	"io/fs"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/mayowa/templates"
 )
 
 type Options struct {
-	Host        string
-	Port        int
-	Public      string
-	Middleware  []Middleware
-	Routes      []Route
-	Log         *slog.Logger
-	LogRequests bool
-	Templates   *TemplateOptions
-	SessionMgr  *scs.SessionManager
+	Host             string
+	Port             int
+	Public           string
+	Middleware       []Middleware
+	Routes           []Route
+	Log              *slog.Logger
+	LogRequests      bool
+	TemplateRenderer Renderer
+	SessionMgr       *scs.SessionManager
 }
 
 type TemplateOptions struct {
@@ -54,7 +53,7 @@ type Server struct {
 	routes       []Route
 	log          *slog.Logger
 	mux          *http.ServeMux
-	templateMgr  *templates.Template
+	templateMgr  Renderer
 	routeMounted bool
 	logRequests  bool
 	sessionMgr   *scs.SessionManager
@@ -75,11 +74,7 @@ func Init(option Options) (*Server, error) {
 		logRequests: option.LogRequests,
 		sessionMgr:  option.SessionMgr,
 		routeNames:  make(map[string]string),
-	}
-	if option.Templates != nil {
-		if err := srv.initTemplates(*option.Templates); err != nil {
-			return nil, err
-		}
+		templateMgr: option.TemplateRenderer,
 	}
 
 	if srv.log == nil {
@@ -95,30 +90,6 @@ func Init(option Options) (*Server, error) {
 	srv.HTTPServer.Handler = s
 
 	return srv, nil
-}
-
-func (s *Server) initTemplates(options TemplateOptions) error {
-
-	fnMap := options.FuncMap
-	if fnMap == nil {
-		fnMap = make(template.FuncMap)
-	}
-	fnMap["routeName"] = s.RouteName
-
-	opts := templates.TemplateOptions{
-		Ext:       options.Ext,
-		FuncMap:   options.FuncMap,
-		PathToSVG: options.PathToSVG,
-		FS:        options.FS,
-		Debug:     options.Debug,
-	}
-	tplMgr, err := templates.New(options.Root, &opts)
-	if err != nil {
-		return err
-	}
-
-	s.templateMgr = tplMgr
-	return nil
 }
 
 // Route mounts the routes to the server. It should be called after all routes are added

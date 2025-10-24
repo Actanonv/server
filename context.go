@@ -10,7 +10,6 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/mayowa/go-htmx"
-	"github.com/mayowa/templates"
 )
 
 // RenderOpt is a short alias for templates.RenderOption
@@ -66,22 +65,21 @@ func (c *HandlerContext) Response() http.ResponseWriter {
 	return c.w
 }
 
-var ErrTemplatesNotInitialized = errors.New("templates not initialized")
+var ErrRendererNotProvided = errors.New("templates renderer not provided")
+
+type Renderer interface {
+	Render(w io.Writer, ctx RenderOpt) error
+}
 
 func (c *HandlerContext) Render(status int, ctx RenderOpt) error {
 	if c.srv != nil && c.srv.templateMgr == nil {
-		return ErrTemplatesNotInitialized
+		return ErrRendererNotProvided
 	}
 
+	var rdr Renderer = c.srv.templateMgr
+
 	out := new(bytes.Buffer)
-	tplCtx := templates.RenderOption{
-		Layout:       ctx.Layout,
-		Template:     ctx.Template,
-		RenderString: ctx.RenderString,
-		Others:       ctx.Others,
-		Data:         ctx.Data,
-	}
-	if err := c.srv.templateMgr.Render(out, tplCtx); err != nil {
+	if err := rdr.Render(out, ctx); err != nil {
 		return err
 	}
 

@@ -17,13 +17,13 @@ import (
 
 func TestInit(t *testing.T) {
 	options := Options{
-		Host:       "localhost",
-		Port:       4000,
-		Public:     "",
-		Middleware: nil,
-		Log:        nil,
-		Templates:  nil,
-		SessionMgr: nil,
+		Host:             "localhost",
+		Port:             4000,
+		Public:           "",
+		Middleware:       nil,
+		Log:              nil,
+		TemplateRenderer: nil,
+		SessionMgr:       nil,
 	}
 
 	srv, _ := Init(options)
@@ -183,12 +183,16 @@ func TestServerMux_ChainedGroup(t *testing.T) {
 
 }
 
+type testRenderer struct{ msg string }
+
+func (tr *testRenderer) Render(w io.Writer, ctx RenderOpt) error {
+	_, err := w.Write([]byte(tr.msg))
+	return err
+}
+
 func TestServerRendering(t *testing.T) {
 
-	tplOptions := TemplateOptions{
-		Root: "./testData/templates",
-		Ext:  ".tmpl",
-	}
+	rdr := testRenderer{msg: "Hello, World!"}
 
 	test := []struct {
 		name           string
@@ -226,7 +230,7 @@ func TestServerRendering(t *testing.T) {
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
 			options := defaultOptions
-			options.Templates = &tplOptions
+			options.TemplateRenderer = &rdr
 			options.Routes = []Route{
 				{Match: tt.route, Handler: tt.handler},
 			}
