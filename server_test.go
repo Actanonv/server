@@ -387,6 +387,9 @@ func TestServer_RouteName(t *testing.T) {
 	srv, err := Init(Options{})
 	require.NoError(t, err, "server init failed")
 
+	srv.HandleFunc("/users/profiles", func(ctx Context) error {
+		return nil
+	}, WithName("userProfiles"))
 	srv.HandleFunc("/users/{id}/profile", func(ctx Context) error {
 		return nil
 	}, WithName("userProfile"))
@@ -422,6 +425,12 @@ func TestServer_RouteName(t *testing.T) {
 
 		rtn = srv.RouteName("catalog/item", "itemId", "1001")
 		assert.Equal(t, "/catalogs/items/1001", rtn)
+
+	})
+
+	t.Run("test no route params", func(t *testing.T) {
+		rtn := srv.RouteName("userProfiles")
+		assert.Equal(t, "/users/profiles", rtn)
 
 	})
 }

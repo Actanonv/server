@@ -251,7 +251,7 @@ func (s *Server) RouteName(name string, params ...string) string {
 		return route
 	}
 
-	return ""
+	return route
 }
 
 func (s *Server) addRouteName(name string, route string) {
