@@ -38,6 +38,8 @@ type Context interface {
 	Log() *slog.Logger
 	Session() *sessHelper
 	Error(code int, msg any, args ...errorPageCtxArg) error
+	UrlParam(key string) string
+	Param(key string) string
 }
 
 type HandlerContext struct {
@@ -133,6 +135,14 @@ func (c *HandlerContext) Log() *slog.Logger {
 	}
 
 	return appLog
+}
+
+func (c *HandlerContext) UrlParam(key string) string {
+	return c.Request().PathValue(key)
+}
+
+func (c *HandlerContext) Param(key string) string {
+	return c.Request().FormValue(key)
 }
 
 type errorPageCtx struct {
