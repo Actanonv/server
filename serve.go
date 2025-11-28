@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -254,10 +255,27 @@ func (s *Server) RouteName(name string, params ...string) string {
 	return route
 }
 
-func (s *Server) addRouteName(name string, route string) {
-	s.routeNames[strings.ToLower(name)] = route
+func (s *Server) addRouteName(name string, pattern string) {
+	_, host, pth := PatternParts(pattern)
+	if host == "" && pth == "" {
+		s.log.Warn("route name not added", "name", name, "pattern", pattern)
+		return
+	}
+
+	s.routeNames[strings.ToLower(name)] = host + pth
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.HTTPServer.Shutdown(ctx)
+}
+
+var rePattern = regexp.MustCompile(`^(?:(\w+)\s+)?([^/ ]+)?(/.*)?$`)
+
+func PatternParts(pattern string) (method, name, path string) {
+	parts := rePattern.FindStringSubmatch(pattern)
+	if len(parts) != 4 {
+		return "", "", ""
+	}
+
+	return parts[1], parts[2], parts[3]
 }

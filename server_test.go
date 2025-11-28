@@ -400,6 +400,12 @@ func TestServer_RouteName(t *testing.T) {
 		srv.HandleFunc("/", func(ctx Context) error { return nil }, WithName("list"))
 		srv.HandleFunc("/items/{itemId}", func(ctx Context) error { return nil }, WithName("item"))
 	})
+	srv.HandleFunc("POST /users/profiles", func(ctx Context) error {
+		return nil
+	}, WithName("postUserProfiles"))
+	srv.HandleFunc("POST api.localhost:4000/users/profiles", func(ctx Context) error {
+		return nil
+	}, WithName("localUserProfiles"))
 
 	err = srv.Route()
 	require.NoError(t, err, "routing failed")
@@ -431,6 +437,14 @@ func TestServer_RouteName(t *testing.T) {
 	t.Run("test no route params", func(t *testing.T) {
 		rtn := srv.RouteName("userProfiles")
 		assert.Equal(t, "/users/profiles", rtn)
+	})
+
+	t.Run("test post route", func(t *testing.T) {
+		rtn := srv.RouteName("postUserProfiles")
+		assert.Equal(t, "/users/profiles", rtn)
+
+		rtn = srv.RouteName("localUserProfiles")
+		assert.Equal(t, "api.localhost:4000/users/profiles", rtn)
 
 	})
 }
