@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,7 @@ type Context interface {
 	Request() *http.Request
 	Response() http.ResponseWriter
 	Render(status int, ctx RenderOpt) error
+	JSON(status int, data JSONResponse) error
 	Redirect(url string) error
 	HTMX() *htmx.HTMX
 	Trigger() *htmx.Trigger
@@ -86,11 +88,31 @@ func (c *HandlerContext) Render(status int, ctx RenderOpt) error {
 	}
 
 	if !ctx.NotDone {
-		c.writeContentType("text/html; charset=utf-8")
+		c.writeContentType(ContentTypeHTML)
 		c.Response().WriteHeader(status)
 	}
 	_, err := io.Copy(c.Response(), out)
 	return err
+}
+
+func (c *HandlerContext) JSON(status int, data JSONResponse) error {
+	c.writeContentType(ContentTypeJSON)
+	c.Response().WriteHeader(status)
+
+	if data.Error != nil && data.ErrorType == "" {
+		if status >= 500 {
+			data.ErrorType = ErrorTypeServer
+		} else {
+			data.ErrorType = ErrorTypeApplication
+		}
+	}
+
+	enc := json.NewEncoder(c.Response())
+	if err := enc.Encode(data); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *HandlerContext) Redirect(url string) error {
@@ -112,7 +134,7 @@ func (c *HandlerContext) Trigger() *htmx.Trigger {
 }
 
 func (c *HandlerContext) String(code int, out string) error {
-	c.writeContentType("text/plain; charset=utf-8")
+	c.writeContentType(ContentTypeText)
 	c.Response().WriteHeader(code)
 
 	_, err := c.Response().Write([]byte(out))
@@ -162,10 +184,8 @@ func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg)
 		return nil
 	}
 
+	// prep err data
 	suffix := "page"
-	// if c.HTMX().IsHxRequest() {
-	// 	suffix = "hx"
-	// }
 	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
 	c.errSet = true
 	errCtx := errorPageCtx{Args: args}
@@ -178,6 +198,21 @@ func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg)
 		msgIsError = true
 	}
 
+	// return json errors for json requests
+	if c.Request().Header.Get("Content-Type") == ContentTypeJSON {
+		out := JSONResponse{
+			Status: statusCode,
+			Error: map[string]any{
+				"msg":  errCtx.Msg,
+				"args": errCtx.Args,
+			},
+			ErrorType: ErrorTypeApplication,
+		}
+
+		return c.JSON(statusCode, out)
+	}
+
+	// handle htmlx/htmx requests
 	if c.HTMX().IsHxRequest() {
 		// deliberately ignores c.Trigger() so as to override it
 		trigger := htmx.NewTrigger().AddEventObject("serverCtxError", map[string]any{
