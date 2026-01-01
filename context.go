@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ type RenderOpt struct {
 var _ Context = &HandlerContext{}
 
 type Context interface {
+	Context() context.Context
 	Request() *http.Request
 	Response() http.ResponseWriter
 	Render(status int, ctx RenderOpt) error
@@ -59,6 +61,10 @@ func NewContext(w http.ResponseWriter, r *http.Request) *HandlerContext {
 	ctx.srv = r.Context().Value(CtxKeyServer).(*Server)
 	ctx.hxTrigger = htmx.NewTrigger()
 	return ctx
+}
+
+func (c *HandlerContext) Context() context.Context {
+	return c.r.Context()
 }
 
 func (c *HandlerContext) Request() *http.Request {
