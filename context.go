@@ -212,7 +212,7 @@ func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg)
 				"msg":  errCtx.Msg,
 				"args": errCtx.Args,
 			},
-			ErrorType: ErrorTypeApplication,
+			ErrorType: ErrorTypeServer,
 		}
 
 		return c.JSON(statusCode, out)
