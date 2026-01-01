@@ -11,9 +11,8 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := h(ctx)
 	if err != nil {
 		ctx.Log().Error(err.Error(), "code", http.StatusInternalServerError)
-		ctx.Error(http.StatusInternalServerError, err.Error(), errorPageCtxArg{
-			Key: "code", Value: http.StatusInternalServerError,
-		})
+
+		_ = ctx.Error(http.StatusInternalServerError, err)
 		return
 	}
 }

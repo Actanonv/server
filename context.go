@@ -42,6 +42,7 @@ type Context interface {
 	Log() *slog.Logger
 	Session() *sessHelper
 	Error(code int, msg any, args ...errorPageCtxArg) error
+	RequestID() string
 	UrlParam(key string) string
 	Param(key string) string
 }
@@ -165,6 +166,16 @@ func (c *HandlerContext) Log() *slog.Logger {
 	return appLog
 }
 
+func (c *HandlerContext) RequestID() string {
+	reqID, ok := c.r.Context().Value(requestIDKey).(string)
+	if ok && reqID != "" {
+		return reqID
+	}
+
+	c.Log().Debug("RequestID not found in context. check that the RequestID middleware is setup")
+	return ""
+}
+
 func (c *HandlerContext) UrlParam(key string) string {
 	return c.Request().PathValue(key)
 }
@@ -191,11 +202,10 @@ func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg)
 	}
 
 	// prep err data
-	suffix := "page"
-	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
 	c.errSet = true
-	errCtx := errorPageCtx{Args: args}
 	msgIsError := false
+
+	errCtx := errorPageCtx{Args: args}
 	switch m := msg.(type) {
 	default:
 		errCtx.Msg = fmt.Sprintf("%v", m)
@@ -209,14 +219,18 @@ func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg)
 		out := JSONResponse{
 			Status: statusCode,
 			Error: map[string]any{
-				"msg":  errCtx.Msg,
-				"args": errCtx.Args,
+				"msg":       errCtx.Msg,
+				"args":      errCtx.Args,
+				"requestID": c.RequestID(),
 			},
 			ErrorType: ErrorTypeServer,
 		}
 
 		return c.JSON(statusCode, out)
 	}
+
+	suffix := "page"
+	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
 
 	// handle htmlx/htmx requests
 	if c.HTMX().IsHxRequest() {
