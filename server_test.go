@@ -476,10 +476,33 @@ func TestServer_GroupMiddleware(t *testing.T) {
 
 func testAgeMiddleware(next http.Handler) http.Handler {
 	return HandlerFunc(func(ctx Context) error {
-		r := ctx.Request()
-		r = r.WithContext(context.WithValue(r.Context(), "age", 22))
+		ctx.ContextSet("age", 22)
 
-		next.ServeHTTP(ctx.Response(), r)
+		next.ServeHTTP(ctx.Response(), ctx.Request())
 		return nil
 	})
+}
+
+func TestServer_ContextGet(t *testing.T) {
+	options := Options{}
+	srv, err := Init(options)
+	require.NoError(t, err, "server init failed")
+
+	srv.Group("/greet", "", func(srv *Server) {
+		srv.HandleFunc("/hello", func(ctx Context) error {
+			age := ctx.ContextGet("age")
+			return ctx.String(http.StatusOK, fmt.Sprint("Hello, ", age, " year old World!"))
+		}, WithMiddleware(testAgeMiddleware))
+	})
+
+	if err := srv.Route(); err != nil {
+		require.Error(t, err)
+		return
+	}
+
+	resp, err := runTestServer(t, srv, "/greet/hello")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, "Hello, 22 year old World!", string(body))
 }

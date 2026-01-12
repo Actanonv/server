@@ -29,6 +29,8 @@ var _ Context = &HandlerContext{}
 
 type Context interface {
 	Context() context.Context
+	ContextGet(key string, defa ...any) any
+	ContextSet(key string, val any) *http.Request
 	Request() *http.Request
 	Response() http.ResponseWriter
 	Render(status int, ctx RenderOpt) error
@@ -66,6 +68,25 @@ func NewContext(w http.ResponseWriter, r *http.Request) *HandlerContext {
 
 func (c *HandlerContext) Context() context.Context {
 	return c.r.Context()
+}
+
+func (c *HandlerContext) ContextGet(key string, defa ...any) any {
+	var dv any
+	if len(defa) > 0 {
+		dv = defa[0]
+	}
+
+	retv := c.Context().Value(key)
+	if retv == nil {
+		return dv
+	}
+
+	return retv
+}
+
+func (c *HandlerContext) ContextSet(key string, val any) *http.Request {
+	c.r = c.Request().WithContext(context.WithValue(c.Request().Context(), key, val))
+	return c.r
 }
 
 func (c *HandlerContext) Request() *http.Request {
