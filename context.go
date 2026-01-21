@@ -47,6 +47,7 @@ type Context interface {
 	RequestID() string
 	UrlParam(key string) string
 	Param(key string) string
+	GetRoutePath(name string, params ...string) string
 }
 
 type HandlerContext struct {
@@ -87,6 +88,15 @@ func (c *HandlerContext) ContextGet(key string, defa ...any) any {
 func (c *HandlerContext) ContextSet(key string, val any) *http.Request {
 	c.r = c.Request().WithContext(context.WithValue(c.Request().Context(), key, val))
 	return c.r
+}
+
+func (c *HandlerContext) GetRoutePath(name string, params ...string) string {
+	srv := c.Context().Value(CtxKeyServer).(*Server)
+	if srv == nil {
+		return ""
+	}
+
+	return srv.RouteName(name, params...)
 }
 
 func (c *HandlerContext) Request() *http.Request {

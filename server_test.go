@@ -506,3 +506,26 @@ func TestServer_ContextGet(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, "Hello, 22 year old World!", string(body))
 }
+
+func TestServer_ContextRouteName(t *testing.T) {
+	options := Options{}
+	srv, err := Init(options)
+	require.NoError(t, err, "server init failed")
+
+	srv.HandleFunc("/hello",
+		func(ctx Context) error {
+			routeName := ctx.GetRoutePath("hello")
+			return ctx.String(http.StatusOK, fmt.Sprint("Hello, ", routeName))
+		}, WithName("hello"))
+
+	if err := srv.Route(); err != nil {
+		require.Error(t, err)
+		return
+	}
+
+	resp, err := runTestServer(t, srv, "/hello")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, "Hello, /hello", string(body))
+}
