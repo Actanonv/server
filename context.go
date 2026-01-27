@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -29,8 +28,8 @@ var _ Context = &HandlerContext{}
 
 type Context interface {
 	Context() context.Context
-	ContextGet(key string, defa ...any) any
-	ContextSet(key string, val any) *http.Request
+	ContextGet(key any, defa ...any) any
+	ContextSet(key any, val any) *http.Request
 	Request() *http.Request
 	Response() http.ResponseWriter
 	Render(status int, ctx RenderOpt) error
@@ -42,21 +41,21 @@ type Context interface {
 	// Status sets the response status code
 	Status(code int) error
 	Log() *slog.Logger
-	Session() *sessHelper
-	Error(code int, msg any, args ...errorPageCtxArg) error
+	Session() *SessionHelper
 	RequestID() string
 	UrlParam(key string) string
 	Param(key string) string
 	GetRoutePath(name string, params ...string) string
+	StillStreaming(state bool)
 }
 
 type HandlerContext struct {
-	w         http.ResponseWriter
-	r         *http.Request
-	hx        *htmx.HTMX
-	hxTrigger *htmx.Trigger
-	srv       *Server
-	errSet    bool
+	w                http.ResponseWriter
+	r                *http.Request
+	hx               *htmx.HTMX
+	hxTrigger        *htmx.Trigger
+	srv              *Server
+	streamingNotDone bool
 }
 
 func NewContext(w http.ResponseWriter, r *http.Request) *HandlerContext {
@@ -71,8 +70,8 @@ func (c *HandlerContext) Context() context.Context {
 	return c.r.Context()
 }
 
-func (c *HandlerContext) ContextGet(key string, defa ...any) any {
-	var dv any
+func (c *HandlerContext) ContextGet(key any, defa ...any) any {
+	var dv any = ""
 	if len(defa) > 0 {
 		dv = defa[0]
 	}
@@ -85,7 +84,7 @@ func (c *HandlerContext) ContextGet(key string, defa ...any) any {
 	return retv
 }
 
-func (c *HandlerContext) ContextSet(key string, val any) *http.Request {
+func (c *HandlerContext) ContextSet(key any, val any) *http.Request {
 	c.r = c.Request().WithContext(context.WithValue(c.Request().Context(), key, val))
 	return c.r
 }
@@ -113,6 +112,10 @@ type Renderer interface {
 	Render(w io.Writer, ctx RenderOpt) error
 }
 
+func (c *HandlerContext) StillStreaming(state bool) {
+	c.streamingNotDone = state
+}
+
 func (c *HandlerContext) Render(status int, ctx RenderOpt) error {
 	if c.srv != nil && c.srv.templateMgr == nil {
 		return ErrRendererNotProvided
@@ -125,7 +128,12 @@ func (c *HandlerContext) Render(status int, ctx RenderOpt) error {
 		return err
 	}
 
-	if !ctx.NotDone {
+	if ctx.NotDone {
+		c.streamingNotDone = true
+		return nil
+	}
+
+	if !c.streamingNotDone {
 		c.writeContentType(ContentTypeHTML)
 		c.Response().WriteHeader(status)
 	}
@@ -215,78 +223,6 @@ func (c *HandlerContext) Param(key string) string {
 	return c.Request().FormValue(key)
 }
 
-type errorPageCtx struct {
-	Msg  string
-	Args []errorPageCtxArg
-}
-type errorPageCtxArg struct {
-	Key   string
-	Value any
-}
-
-// Error renders an error page with the specified status code and message, supporting HTMX-specific handling when applicable.
-// The status code is used to determine the template name, e.g. 404.page or 404.hx
-func (c *HandlerContext) Error(statusCode int, msg any, args ...errorPageCtxArg) error {
-	if c.errSet {
-		c.Log().Info("ctx.Error() ctx.isSet=true", "code", statusCode, "error", msg, "args", args)
-		return nil
-	}
-
-	// prep err data
-	c.errSet = true
-	msgIsError := false
-
-	errCtx := errorPageCtx{Args: args}
-	switch m := msg.(type) {
-	default:
-		errCtx.Msg = fmt.Sprintf("%v", m)
-	case error:
-		errCtx.Msg = m.Error()
-		msgIsError = true
-	}
-
-	// return json errors for json requests
-	if c.Request().Header.Get("Content-Type") == ContentTypeJSON {
-		out := JSONResponse{
-			Status: statusCode,
-			Error: map[string]any{
-				"msg":       errCtx.Msg,
-				"args":      errCtx.Args,
-				"requestID": c.RequestID(),
-			},
-			ErrorType: ErrorTypeServer,
-		}
-
-		return c.JSON(statusCode, out)
-	}
-
-	suffix := "page"
-	tplName := fmt.Sprintf("%d.%s", statusCode, suffix)
-
-	// handle htmlx/htmx requests
-	if c.HTMX().IsHxRequest() {
-		// deliberately ignores c.Trigger() so as to override it
-		trigger := htmx.NewTrigger().AddEventObject("serverCtxError", map[string]any{
-			"code": statusCode,
-			"msg":  errCtx.Msg,
-			"args": errCtx.Args,
-		})
-		c.HTMX().TriggerAfterSwapWithObject(trigger)
-	} else {
-		if err := c.Render(statusCode, RenderOpt{Template: tplName, Data: errCtx}); err != nil {
-			c.Log().Error("failed to render error page", "code", statusCode, "suffix", suffix, "error", err)
-			return fmt.Errorf("failed to render error page: %w", err)
-		}
-	}
-
-	c.Response().WriteHeader(statusCode)
-	if msgIsError {
-		return msg.(error)
-	}
-
-	return nil
-}
-
 const HeaderContentType = "Content-Type"
 
 func (c *HandlerContext) writeContentType(value string) {
@@ -296,28 +232,28 @@ func (c *HandlerContext) writeContentType(value string) {
 	}
 }
 
-type sessHelper struct {
+type SessionHelper struct {
 	r    *http.Request
 	sess *scs.SessionManager
 }
 
-func (h *sessHelper) Get(key string) any {
+func (h *SessionHelper) Get(key string) any {
 	return h.sess.Get(h.r.Context(), key)
 }
 
-func (h *sessHelper) Put(key string, val interface{}) {
+func (h *SessionHelper) Put(key string, val interface{}) {
 	h.sess.Put(h.r.Context(), key, val)
 }
 
-func (h *sessHelper) Exists(key string) bool {
+func (h *SessionHelper) Exists(key string) bool {
 	return h.sess.Exists(h.r.Context(), key)
 }
 
-func (h *sessHelper) Mgr() *scs.SessionManager {
+func (h *SessionHelper) Mgr() *scs.SessionManager {
 	return h.sess
 }
 
-func (c *HandlerContext) Session() *sessHelper {
+func (c *HandlerContext) Session() *SessionHelper {
 	retv := c.Request().Context().Value(CtxKeySessionMgr)
 	if retv == nil {
 		return nil
@@ -327,5 +263,5 @@ func (c *HandlerContext) Session() *sessHelper {
 	if !ok || sess == nil {
 		return nil
 	}
-	return &sessHelper{r: c.Request(), sess: sess}
+	return &SessionHelper{r: c.Request(), sess: sess}
 }

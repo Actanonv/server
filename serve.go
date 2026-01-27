@@ -17,6 +17,8 @@ import (
 	"github.com/alexedwards/scs/v2"
 )
 
+type ErrorFunc func(ctx Context)
+
 type Options struct {
 	Host             string
 	Port             int
@@ -27,6 +29,7 @@ type Options struct {
 	LogRequests      bool
 	TemplateRenderer Renderer
 	SessionMgr       *scs.SessionManager
+	ErrorFunc        ErrorFunc
 }
 
 type TemplateOptions struct {
@@ -59,6 +62,7 @@ type Server struct {
 	logRequests  bool
 	sessionMgr   *scs.SessionManager
 	routeNames   map[string]string
+	errorFunc    ErrorFunc
 }
 
 func Init(option Options) (*Server, error) {
@@ -76,6 +80,7 @@ func Init(option Options) (*Server, error) {
 		sessionMgr:  option.SessionMgr,
 		routeNames:  make(map[string]string),
 		templateMgr: option.TemplateRenderer,
+		errorFunc:   option.ErrorFunc,
 	}
 
 	if srv.log == nil {
