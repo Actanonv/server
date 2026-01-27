@@ -17,13 +17,12 @@ import (
 
 func TestInit(t *testing.T) {
 	options := Options{
-		Host:             "localhost",
-		Port:             4000,
-		Public:           "",
-		Middleware:       nil,
-		Log:              nil,
-		TemplateRenderer: nil,
-		SessionMgr:       nil,
+		Host:       "localhost",
+		Port:       4000,
+		Public:     "",
+		Middleware: nil,
+		Log:        nil,
+		SessionMgr: nil,
 	}
 
 	srv, _ := Init(options)
@@ -36,7 +35,6 @@ func TestInit(t *testing.T) {
 	assert.Equal(options.Middleware, srv.Middleware)
 	assert.Equal(srv.log, appLog)
 	assert.Equal(options.LogRequests, srv.logRequests)
-	assert.Nil(srv.templateMgr)
 	assert.Equal(options.SessionMgr, srv.sessionMgr)
 }
 
@@ -183,16 +181,7 @@ func TestServerMux_ChainedGroup(t *testing.T) {
 
 }
 
-type testRenderer struct{ msg string }
-
-func (tr *testRenderer) Render(w io.Writer, ctx RenderOpt) error {
-	_, err := w.Write([]byte(tr.msg))
-	return err
-}
-
 func TestServerRendering(t *testing.T) {
-
-	rdr := testRenderer{msg: "Hello, World!"}
 
 	test := []struct {
 		name           string
@@ -212,25 +201,11 @@ func TestServerRendering(t *testing.T) {
 				return ctx.String(http.StatusOK, "Hello, World!")
 			},
 		},
-
-		{
-			name:           "render template",
-			route:          "GET /test-template",
-			url:            "/test-template",
-			expectedBody:   "Hello, World!",
-			expectedStatus: http.StatusOK,
-			handler: func(ctx Context) error {
-				return ctx.Render(http.StatusOK, RenderOpt{
-					Template: "hello",
-				})
-			},
-		},
 	}
 
 	for _, tt := range test {
 		t.Run(tt.name, func(t *testing.T) {
 			options := defaultOptions
-			options.TemplateRenderer = &rdr
 			options.Routes = []Route{
 				{Match: tt.route, Handler: tt.handler},
 			}

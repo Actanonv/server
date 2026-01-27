@@ -17,19 +17,18 @@ import (
 	"github.com/alexedwards/scs/v2"
 )
 
-type ErrorFunc func(ctx Context)
+type ErrorFunc func(ctx Context, err error)
 
 type Options struct {
-	Host             string
-	Port             int
-	Public           string
-	Middleware       []Middleware
-	Routes           []Route
-	Log              *slog.Logger
-	LogRequests      bool
-	TemplateRenderer Renderer
-	SessionMgr       *scs.SessionManager
-	ErrorFunc        ErrorFunc
+	Host        string
+	Port        int
+	Public      string
+	Middleware  []Middleware
+	Routes      []Route
+	Log         *slog.Logger
+	LogRequests bool
+	SessionMgr  *scs.SessionManager
+	ErrorFunc   ErrorFunc
 }
 
 type TemplateOptions struct {
@@ -57,7 +56,6 @@ type Server struct {
 	routes       []Route
 	log          *slog.Logger
 	mux          *http.ServeMux
-	templateMgr  Renderer
 	routeMounted bool
 	logRequests  bool
 	sessionMgr   *scs.SessionManager
@@ -79,7 +77,6 @@ func Init(option Options) (*Server, error) {
 		logRequests: option.LogRequests,
 		sessionMgr:  option.SessionMgr,
 		routeNames:  make(map[string]string),
-		templateMgr: option.TemplateRenderer,
 		errorFunc:   option.ErrorFunc,
 	}
 

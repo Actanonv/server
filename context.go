@@ -1,28 +1,13 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/mayowa/go-htmx"
 )
-
-// RenderOpt is a short alias for templates.RenderOption
-type RenderOpt struct {
-	Layout       string
-	Template     string
-	RenderString bool
-	Others       []string
-	Data         any
-	// NotDone prevents Render() from calling c.Response().WriteHeader(status)
-	NotDone bool
-}
 
 var _ Context = &HandlerContext{}
 
@@ -32,11 +17,8 @@ type Context interface {
 	ContextSet(key any, val any) *http.Request
 	Request() *http.Request
 	Response() http.ResponseWriter
-	Render(status int, ctx RenderOpt) error
 	JSON(status int, data JSONResponse) error
 	Redirect(url string) error
-	HTMX() *htmx.HTMX
-	Trigger() *htmx.Trigger
 	String(code int, out string) error
 	// Status sets the response status code
 	Status(code int) error
@@ -52,17 +34,18 @@ type Context interface {
 type HandlerContext struct {
 	w                http.ResponseWriter
 	r                *http.Request
-	hx               *htmx.HTMX
-	hxTrigger        *htmx.Trigger
 	srv              *Server
 	streamingNotDone bool
 }
 
 func NewContext(w http.ResponseWriter, r *http.Request) *HandlerContext {
 	ctx := &HandlerContext{w: w, r: r}
-	ctx.hx = htmx.New(w, r)
-	ctx.srv = r.Context().Value(CtxKeyServer).(*Server)
-	ctx.hxTrigger = htmx.NewTrigger()
+	srv, ok := r.Context().Value(CtxKeyServer).(*Server)
+	if !ok {
+		return nil
+	}
+
+	ctx.srv = srv
 	return ctx
 }
 
@@ -106,39 +89,8 @@ func (c *HandlerContext) Response() http.ResponseWriter {
 	return c.w
 }
 
-var ErrRendererNotProvided = errors.New("templates renderer not provided")
-
-type Renderer interface {
-	Render(w io.Writer, ctx RenderOpt) error
-}
-
 func (c *HandlerContext) StillStreaming(state bool) {
 	c.streamingNotDone = state
-}
-
-func (c *HandlerContext) Render(status int, ctx RenderOpt) error {
-	if c.srv != nil && c.srv.templateMgr == nil {
-		return ErrRendererNotProvided
-	}
-
-	var rdr Renderer = c.srv.templateMgr
-
-	out := new(bytes.Buffer)
-	if err := rdr.Render(out, ctx); err != nil {
-		return err
-	}
-
-	if ctx.NotDone {
-		c.streamingNotDone = true
-		return nil
-	}
-
-	if !c.streamingNotDone {
-		c.writeContentType(ContentTypeHTML)
-		c.Response().WriteHeader(status)
-	}
-	_, err := io.Copy(c.Response(), out)
-	return err
 }
 
 func (c *HandlerContext) JSON(status int, data JSONResponse) error {
@@ -162,21 +114,8 @@ func (c *HandlerContext) JSON(status int, data JSONResponse) error {
 }
 
 func (c *HandlerContext) Redirect(url string) error {
-	if c.HTMX().IsHxRequest() {
-		c.HTMX().Redirect(url)
-		return nil
-	}
-
 	http.Redirect(c.Response(), c.Request(), url, http.StatusSeeOther)
 	return nil
-}
-
-func (c *HandlerContext) HTMX() *htmx.HTMX {
-	return c.hx
-}
-
-func (c *HandlerContext) Trigger() *htmx.Trigger {
-	return c.hxTrigger
 }
 
 func (c *HandlerContext) String(code int, out string) error {
