@@ -18,7 +18,7 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if rec := recover(); rec != nil {
-			ctx.Log().Error("panic recovered", "panic", rec, "stack", debug.Stack())
+			ctx.Log().Error("panic recovered", "panic", rec, "stack", string(debug.Stack()))
 
 			srv, ok := ctx.ContextGet(CtxKeyServer).(*Server)
 			if ok && srv != nil && srv.errorFunc != nil {
