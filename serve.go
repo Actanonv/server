@@ -20,15 +20,16 @@ import (
 type ErrorFunc func(ctx Context, err error)
 
 type Options struct {
-	Host        string
-	Port        int
-	Public      string
-	Middleware  []Middleware
-	Routes      []Route
-	Log         *slog.Logger
-	LogRequests bool
-	SessionMgr  *scs.SessionManager
-	ErrorFunc   ErrorFunc
+	Host               string
+	Port               int
+	Public             string
+	Middleware         []Middleware
+	Routes             []Route
+	Log                *slog.Logger
+	LogRequests        bool
+	SessionMgr         *scs.SessionManager
+	ErrorFunc          ErrorFunc
+	DisableLoadAndSave bool
 }
 
 type TemplateOptions struct {
@@ -51,17 +52,16 @@ type Server struct {
 	Port   int
 	Public string
 
-	Middleware         []Middleware
-	HTTPServer         *http.Server
-	routes             []Route
-	log                *slog.Logger
-	mux                *http.ServeMux
-	routeMounted       bool
-	logRequests        bool
-	sessionMgr         *scs.SessionManager
-	routeNames         map[string]string
-	errorFunc          ErrorFunc
-	DisableLoadAndSave bool
+	Middleware   []Middleware
+	HTTPServer   *http.Server
+	routes       []Route
+	log          *slog.Logger
+	mux          *http.ServeMux
+	routeMounted bool
+	logRequests  bool
+	sessionMgr   *scs.SessionManager
+	routeNames   map[string]string
+	errorFunc    ErrorFunc
 }
 
 func Init(option Options) (*Server, error) {
@@ -88,7 +88,7 @@ func Init(option Options) (*Server, error) {
 	srv.HTTPServer = &http.Server{}
 
 	var s http.Handler = srv
-	if srv.sessionMgr != nil && !srv.DisableLoadAndSave {
+	if srv.sessionMgr != nil && !option.DisableLoadAndSave {
 		s = srv.sessionMgr.LoadAndSave(s)
 	}
 	srv.HTTPServer.Handler = s
