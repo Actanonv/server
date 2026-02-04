@@ -51,16 +51,17 @@ type Server struct {
 	Port   int
 	Public string
 
-	Middleware   []Middleware
-	HTTPServer   *http.Server
-	routes       []Route
-	log          *slog.Logger
-	mux          *http.ServeMux
-	routeMounted bool
-	logRequests  bool
-	sessionMgr   *scs.SessionManager
-	routeNames   map[string]string
-	errorFunc    ErrorFunc
+	Middleware         []Middleware
+	HTTPServer         *http.Server
+	routes             []Route
+	log                *slog.Logger
+	mux                *http.ServeMux
+	routeMounted       bool
+	logRequests        bool
+	sessionMgr         *scs.SessionManager
+	routeNames         map[string]string
+	errorFunc          ErrorFunc
+	DisableLoadAndSave bool
 }
 
 func Init(option Options) (*Server, error) {
@@ -87,7 +88,7 @@ func Init(option Options) (*Server, error) {
 	srv.HTTPServer = &http.Server{}
 
 	var s http.Handler = srv
-	if srv.sessionMgr != nil {
+	if srv.sessionMgr != nil && !srv.DisableLoadAndSave {
 		s = srv.sessionMgr.LoadAndSave(s)
 	}
 	srv.HTTPServer.Handler = s
