@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"html/template"
@@ -64,7 +65,8 @@ type Server struct {
 	routeNames   map[string]string
 	errorFunc    ErrorFunc
 
-	mu sync.RWMutex
+	mu               sync.RWMutex
+	routeNamesAtomic atomic.Value // stores map[string]string
 }
 
 func Init(option Options) (*Server, error) {
@@ -83,6 +85,7 @@ func Init(option Options) (*Server, error) {
 		routeNames:  make(map[string]string),
 		errorFunc:   option.ErrorFunc,
 	}
+	srv.routeNamesAtomic.Store(make(map[string]string))
 
 	if srv.log == nil {
 		srv.log = appLog
@@ -126,6 +129,10 @@ func (s *Server) Route() error {
 
 	s.mux.Handle("/", chain.Then(root))
 	s.routeMounted = true
+
+	// Update atomic routeNames for lock-free reads
+	s.updateRouteNamesAtomicLocked()
+
 	return nil
 }
 
@@ -166,6 +173,11 @@ func (s *Server) Handle(pattern string, handler http.Handler, args ...HandleOpti
 	}
 
 	s.routes = append(s.routes, Route{Match: pattern, Handler: handler, Name: options.name})
+
+	if options.name != "" {
+		s.addRouteNameLocked(options.name, pattern)
+		s.updateRouteNamesAtomicLocked()
+	}
 }
 
 func (s *Server) HandleFunc(pattern string, handler HandlerFunc, args ...HandleOptionFn) {
@@ -178,6 +190,7 @@ func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 	sub := &Server{
 		log:        s.log,
 		sessionMgr: s.sessionMgr,
+		routeNames: make(map[string]string),
 	}
 	fn(sub)
 
@@ -195,6 +208,11 @@ func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 
 	if hasNamedRoutes && name == "" {
 		panic(fmt.Sprintf("group(%q) has named routes but no group name was provided", pattern))
+	}
+
+	// Update atomic routeNames if new names were added
+	if hasNamedRoutes {
+		s.updateRouteNamesAtomicLocked()
 	}
 
 	if !strings.HasSuffix(pattern, "/") {
@@ -266,11 +284,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // path parameters in the route path. Path parameters are of the format {param}.
 // group route names are prefixed with the group name, separated by a slash.
 func (s *Server) RouteName(name string, params ...string) string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	name = strings.ToLower(name)
-	route, found := s.routeNames[name]
+	routeMap, ok := s.routeNamesAtomic.Load().(map[string]string)
+	if !ok {
+		return ""
+	}
+
+	route, found := routeMap[name]
 	if !found {
 		return route
 	}
@@ -281,16 +301,23 @@ func (s *Server) RouteName(name string, params ...string) string {
 			params = append(params, "")
 		}
 
+		pairs := make([]string, 0, len(params))
 		for i := 0; i < len(params); i += 2 {
-			paramKey := "{" + params[i] + "}"
-			paramVal := params[i+1]
-			route = strings.ReplaceAll(route, paramKey, paramVal)
+			pairs = append(pairs, "{"+params[i]+"}", params[i+1])
 		}
-
-		return route
+		replacer := strings.NewReplacer(pairs...)
+		return replacer.Replace(route)
 	}
 
 	return route
+}
+
+func (s *Server) updateRouteNamesAtomicLocked() {
+	newMap := make(map[string]string, len(s.routeNames))
+	for k, v := range s.routeNames {
+		newMap[k] = v
+	}
+	s.routeNamesAtomic.Store(newMap)
 }
 
 func (s *Server) addRouteName(name string, pattern string) {
