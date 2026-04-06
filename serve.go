@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -131,6 +132,10 @@ func (s *Server) Route() error {
 	}
 
 	s.mux.Handle("/", chain.Then(root))
+
+	// Handle 404 and 405 by wrapping the mux or using a custom handler
+	// However, http.ServeMux doesn't have a direct way to set a NotFound handler that gets called for everything.
+	// We can wrap the entire mux.
 	s.routeMounted = true
 
 	// Update atomic routeNames for lock-free reads
@@ -265,22 +270,67 @@ const (
 	CtxKeySessionMgr CtxKey = "_sessMgr_"
 )
 
+var ErrStatus404 = errors.New("404 page not found")
+var ErrStatus405 = errors.New("405 method not allowed")
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(context.WithValue(r.Context(), CtxKeyServer, s))
 	if s.sessionMgr != nil {
 		r = r.WithContext(context.WithValue(r.Context(), CtxKeySessionMgr, s.sessionMgr))
 	}
 
-	if !s.logRequests {
-		s.mux.ServeHTTP(w, r)
-		return
-	}
-
 	start := time.Now()
 	rw := &ResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-	s.mux.ServeHTTP(rw, r)
-	s.log.Info(r.RequestURI, "method", r.Method, "path", r.URL.Path, "status", rw.statusCode, "duration", time.Since(start))
+	if s.errorFunc != nil {
+		rw.Intercept(true)
+	}
 
+	s.mux.ServeHTTP(rw, r)
+
+	if !rw.Committed() && s.errorFunc != nil && (rw.statusCode == http.StatusNotFound || rw.statusCode == http.StatusMethodNotAllowed) {
+		ctx := NewContext(rw, r)
+		if ctx != nil {
+			var err error
+			if rw.statusCode == http.StatusNotFound {
+				err = ErrStatus404
+			} else {
+				err = ErrStatus405
+			}
+
+			// We need to disable interception so ErrorFunc can write its own 404/405 response
+			rw.Intercept(false)
+
+			func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						s.log.Error("panic in ErrorFunc", "panic", rec, "stack", string(debug.Stack()))
+						if !rw.Committed() {
+							http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+						}
+					}
+				}()
+				s.errorFunc(ctx, err)
+			}()
+
+			if !rw.Committed() {
+				// Ensure something is sent if errorFunc didn't write anything
+				rw.WriteHeader(rw.statusCode)
+				if rw.statusCode == http.StatusNotFound {
+					rw.Write([]byte("404 page not found\n"))
+				} else {
+					rw.Write([]byte("405 method not allowed\n"))
+				}
+			}
+		} else {
+			// Fallback if context cannot be created
+			rw.Intercept(false)
+			http.Error(w, http.StatusText(rw.statusCode), rw.statusCode)
+		}
+	}
+
+	if s.logRequests {
+		s.log.Info(r.RequestURI, "method", r.Method, "path", r.URL.Path, "status", rw.statusCode, "duration", time.Since(start))
+	}
 }
 
 // RouteName returns the route path for the given name. If params are provided, they are used to replace

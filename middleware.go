@@ -22,11 +22,41 @@ const (
 type ResponseWriter struct {
 	http.ResponseWriter
 	statusCode int
+	committed  bool
+	intercept  bool
 }
 
 func (rw *ResponseWriter) WriteHeader(statusCode int) {
+	if rw.committed {
+		return
+	}
+
+	if rw.intercept && (statusCode == http.StatusNotFound || statusCode == http.StatusMethodNotAllowed) {
+		rw.statusCode = statusCode
+		return
+	}
+
 	rw.statusCode = statusCode
+	rw.committed = true
 	rw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (rw *ResponseWriter) Write(b []byte) (int, error) {
+	if !rw.committed {
+		if rw.intercept && (rw.statusCode == http.StatusNotFound || rw.statusCode == http.StatusMethodNotAllowed) {
+			return len(b), nil
+		}
+		rw.WriteHeader(http.StatusOK)
+	}
+	return rw.ResponseWriter.Write(b)
+}
+
+func (rw *ResponseWriter) Committed() bool {
+	return rw.committed
+}
+
+func (rw *ResponseWriter) Intercept(v bool) {
+	rw.intercept = v
 }
 
 const RequestIDHeaderKey string = "X-Request-ID"

@@ -25,6 +25,17 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ctx.Log().Error("panic recovered", "panic", rec, "stack", string(stack))
 
 			if srv != nil && srv.errorFunc != nil {
+				// Wrap ErrorFunc in its own recovery block to prevent secondary panics
+				defer func() {
+					if rec2 := recover(); rec2 != nil {
+						ctx.Log().Error("panic in ErrorFunc (during panic recovery)", "panic", rec2, "stack", string(debug.Stack()))
+						if rw, ok := w.(*ResponseWriter); ok && !rw.Committed() {
+							http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+						} else if !ok {
+							http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+						}
+					}
+				}()
 				// Pass a structured error if possible, or at least a cleaner one
 				srv.errorFunc(ctx, fmt.Errorf("panic: %v", rec))
 			} else {
@@ -45,6 +56,17 @@ func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if srv != nil && srv.errorFunc != nil {
+			// Wrap ErrorFunc in its own recovery block
+			defer func() {
+				if rec2 := recover(); rec2 != nil {
+					ctx.Log().Error("panic in ErrorFunc (during error handling)", "panic", rec2, "stack", string(debug.Stack()))
+					if rw, ok := w.(*ResponseWriter); ok && !rw.Committed() {
+						http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					} else if !ok {
+						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					}
+				}
+			}()
 			srv.errorFunc(ctx, err)
 		} else {
 			msg := "Internal Server Error"

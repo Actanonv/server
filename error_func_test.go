@@ -166,6 +166,47 @@ func TestErrorFunc_DefaultBehaviorPanic(t *testing.T) {
 	assert.Equal(t, "Internal Server Error\n", string(body))
 }
 
+func TestErrorFunc_TriggerBy404(t *testing.T) {
+	var errorFuncCalled bool
+	var capturedErr error
+
+	customErrorFunc := func(ctx Context, err error) {
+		errorFuncCalled = true
+		capturedErr = err
+		ctx.String(http.StatusNotFound, "Custom 404: "+err.Error())
+	}
+
+	options := Options{
+		ErrorFunc: customErrorFunc,
+	}
+	srv, err := Init(options)
+	require.NoError(t, err)
+
+	srv.HandleFunc("/hello", func(ctx Context) error {
+		return ctx.String(http.StatusOK, "Hello")
+	})
+
+	err = srv.Route()
+	require.NoError(t, err)
+
+	tSrv := httptest.NewServer(srv.HTTPServer.Handler)
+	defer tSrv.Close()
+
+	resp, err := tSrv.Client().Get(tSrv.URL + "/notfound")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.True(t, errorFuncCalled, "ErrorFunc should be called for 404")
+	if capturedErr != nil {
+		assert.Contains(t, capturedErr.Error(), "404")
+	}
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "Custom 404: 404 page not found", string(body))
+}
+
 func TestErrorFunc_PanicInMiddleware(t *testing.T) {
 	options := Options{
 		Middleware: []Middleware{
