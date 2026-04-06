@@ -22,15 +22,16 @@ import (
 type ErrorFunc func(ctx Context, err error)
 
 type Options struct {
-	Host               string
-	Port               int
-	Public             string
-	Middleware         []Middleware
-	Routes             []Route
-	Log                *slog.Logger
-	LogRequests        bool
-	SessionMgr         *scs.SessionManager
-	ErrorFunc          ErrorFunc
+	Host        string
+	Port        int
+	Public      string
+	Middleware  []Middleware
+	Routes      []Route
+	Log         *slog.Logger
+	LogRequests bool
+	SessionMgr  *scs.SessionManager
+	ErrorFunc   ErrorFunc
+	Debug       bool
 	DisableLoadAndSave bool
 }
 
@@ -64,6 +65,7 @@ type Server struct {
 	sessionMgr   *scs.SessionManager
 	routeNames   map[string]string
 	errorFunc    ErrorFunc
+	debug        bool
 
 	mu               sync.RWMutex
 	routeNamesAtomic atomic.Value // stores map[string]string
@@ -84,6 +86,7 @@ func Init(option Options) (*Server, error) {
 		sessionMgr:  option.SessionMgr,
 		routeNames:  make(map[string]string),
 		errorFunc:   option.ErrorFunc,
+		debug:       option.Debug,
 	}
 	srv.routeNamesAtomic.Store(make(map[string]string))
 

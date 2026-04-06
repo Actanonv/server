@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/google/uuid"
 )
@@ -49,9 +51,26 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
-			if err := recover(); err != nil {
-				slog.Error("Recovered from panic", "error", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			if rec := recover(); rec != nil {
+				srvr := r.Context().Value(CtxKeyServer)
+				var logr *slog.Logger = appLog
+				var debugMode bool
+
+				if s, ok := srvr.(*Server); ok && s != nil {
+					if s.log != nil {
+						logr = s.log
+					}
+					debugMode = s.debug
+				}
+
+				stack := debug.Stack()
+				logr.Error("Recovered from panic (middleware)", "error", rec, "stack", string(stack))
+
+				msg := http.StatusText(http.StatusInternalServerError)
+				if debugMode {
+					msg = fmt.Sprintf("panic: %v\n%s", rec, string(stack))
+				}
+				http.Error(w, msg, http.StatusInternalServerError)
 			}
 		}()
 		next.ServeHTTP(w, r)

@@ -235,6 +235,7 @@ func TestServerMiddleware(t *testing.T) {
 		expectedStatus int
 		middleware     []Middleware
 		handler        HandlerFunc
+		debug          bool
 	}{
 		{
 			name:           "test reqId",
@@ -284,6 +285,7 @@ func TestServerMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			options := defaultOptions
 			options.Middleware = tt.middleware
+			options.Debug = tt.debug
 			options.Routes = []Route{
 				{Match: tt.route, Handler: tt.handler},
 			}
