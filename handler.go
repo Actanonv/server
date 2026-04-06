@@ -12,7 +12,8 @@ type HandlerFunc func(Context) error
 func (h HandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := NewContext(w, r)
 	if ctx == nil {
-		slog.Error("Failed to create context")
+		slog.Error("Failed to create context: server instance missing from request context")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 

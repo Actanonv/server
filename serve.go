@@ -9,6 +9,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"html/template"
@@ -62,6 +63,8 @@ type Server struct {
 	sessionMgr   *scs.SessionManager
 	routeNames   map[string]string
 	errorFunc    ErrorFunc
+
+	mu sync.RWMutex
 }
 
 func Init(option Options) (*Server, error) {
@@ -99,6 +102,9 @@ func Init(option Options) (*Server, error) {
 // Route mounts the routes to the server. It should be called after all routes are added
 // to the server. It is called from Run() if not called before.
 func (s *Server) Route() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.routeMounted {
 		return nil
 	}
@@ -114,7 +120,7 @@ func (s *Server) Route() error {
 	for _, r := range s.routes {
 		root.Handle(r.Match, r.Handler)
 		if r.Name != "" {
-			s.addRouteName(r.Name, r.Match)
+			s.addRouteNameLocked(r.Name, r.Match)
 		}
 	}
 
@@ -147,6 +153,9 @@ func (s *Server) Handle(pattern string, handler http.Handler, args ...HandleOpti
 		fn(&options)
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.routeMounted {
 		s.log.Warn("routes already mounted")
 		return
@@ -166,14 +175,20 @@ func (s *Server) HandleFunc(pattern string, handler HandlerFunc, args ...HandleO
 // Group panics if a name isn't provided but named routes are registered
 func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 	grp := http.NewServeMux()
-	sub := &Server{}
+	sub := &Server{
+		log:        s.log,
+		sessionMgr: s.sessionMgr,
+	}
 	fn(sub)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	hasNamedRoutes := false
 	for _, r := range sub.routes {
 		grp.Handle(r.Match, r.Handler)
 		if r.Name != "" {
-			s.addRouteName(fmt.Sprint(name, "/", r.Name), path.Join(pattern, r.Match))
+			s.addRouteNameLocked(fmt.Sprint(name, "/", r.Name), path.Join(pattern, r.Match))
 			hasNamedRoutes = true
 		}
 	}
@@ -187,8 +202,25 @@ func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 	}
 
 	mwChain := Chain(sub.Middleware)
-	sPattern := pattern[:len(pattern)-1]
-	s.Handle(pattern, http.StripPrefix(sPattern, mwChain.Then(grp)))
+	_, _, sPath := PatternParts(pattern)
+	if sPath == "" {
+		sPath = pattern
+	}
+
+	if strings.HasSuffix(sPath, "/") && len(sPath) > 1 {
+		sPath = sPath[:len(sPath)-1]
+	}
+
+	// s.Handle already takes the lock, but we are inside a locked block here.
+	// We need a way to add routes without re-locking.
+	// For now, let's unlock before calling Handle or implement a HandleLocked.
+	// However, Handle calls append to s.routes which we need to protect.
+
+	s.routes = append(s.routes, Route{
+		Match:   pattern,
+		Handler: http.StripPrefix(sPath, mwChain.Then(grp)),
+		Name:    "",
+	})
 }
 
 var ErrRoutesNotMounted = errors.New("routes not mounted")
@@ -234,6 +266,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // path parameters in the route path. Path parameters are of the format {param}.
 // group route names are prefixed with the group name, separated by a slash.
 func (s *Server) RouteName(name string, params ...string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	name = strings.ToLower(name)
 	route, found := s.routeNames[name]
 	if !found {
@@ -259,6 +294,12 @@ func (s *Server) RouteName(name string, params ...string) string {
 }
 
 func (s *Server) addRouteName(name string, pattern string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addRouteNameLocked(name, pattern)
+}
+
+func (s *Server) addRouteNameLocked(name string, pattern string) {
 	_, host, pth := PatternParts(pattern)
 	if host == "" && pth == "" {
 		s.log.Warn("route name not added", "name", name, "pattern", pattern)
