@@ -118,7 +118,7 @@ func (s *Server) Route() error {
 		pubFolder = "./public"
 	}
 
-	s.mux.Handle("/public/", http.StripPrefix("/public", http.FileServer(http.Dir(pubFolder))))
+	s.mux.Handle("/public/", http.StripPrefix("/public", http.FileServer(NeuteredFileSystem{http.Dir(pubFolder)})))
 	root := http.NewServeMux()
 	for _, r := range s.routes {
 		root.Handle(r.Match, r.Handler)
@@ -338,6 +338,33 @@ func (s *Server) addRouteNameLocked(name string, pattern string) {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.HTTPServer.Shutdown(ctx)
+}
+
+// NeuteredFileSystem prevents directory listing
+type NeuteredFileSystem struct {
+	fs http.FileSystem
+}
+
+func (nfs NeuteredFileSystem) Open(path string) (http.File, error) {
+	f, err := nfs.fs.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	if s.IsDir() {
+		index := strings.TrimSuffix(path, "/") + "/index.html"
+		if _, err := nfs.fs.Open(index); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+
+	return f, nil
 }
 
 var rePattern = regexp.MustCompile(`^(?:(\w+)\s+)?([^/ ]+)?(/.*)?$`)
