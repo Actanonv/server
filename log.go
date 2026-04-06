@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 )
 
 var appLog *slog.Logger
@@ -49,6 +50,7 @@ type CustomLogHandler struct {
 	slog.Handler
 	opts *slog.HandlerOptions
 	w    *os.File
+	mu   *sync.Mutex
 }
 
 // NewCustomLogHandler creates a new CustomHandler that writes to w
@@ -61,11 +63,15 @@ func NewCustomLogHandler(w *os.File, opts *slog.HandlerOptions) *CustomLogHandle
 		Handler: slog.NewTextHandler(w, opts),
 		opts:    opts,
 		w:       w,
+		mu:      &sync.Mutex{},
 	}
 }
 
 // Handle implements slog.Handler.Handle
 func (h *CustomLogHandler) Handle(ctx context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	timeStr := r.Time.Format("2006/01/02 15:04:05")
 
 	// Create a new record with the formatted time and same attributes
@@ -103,6 +109,8 @@ func (h *CustomLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &CustomLogHandler{
 		Handler: h.Handler.WithAttrs(attrs),
 		opts:    h.opts,
+		w:       h.w,
+		mu:      h.mu,
 	}
 }
 
@@ -111,5 +119,7 @@ func (h *CustomLogHandler) WithGroup(name string) slog.Handler {
 	return &CustomLogHandler{
 		Handler: h.Handler.WithGroup(name),
 		opts:    h.opts,
+		w:       h.w,
+		mu:      h.mu,
 	}
 }
