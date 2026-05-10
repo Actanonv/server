@@ -16,7 +16,7 @@ func TestWithMethod(t *testing.T) {
 
 	srv.HandleFunc("/test", func(ctx Context) error {
 		return ctx.String(http.StatusOK, "OK")
-	}, WithMethod("POST"), WithName("testPost"))
+	}, WithMethods("POST"), WithName("testPost"))
 
 	err = srv.Route()
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func TestWithMultipleMethods(t *testing.T) {
 
 	srv.HandleFunc("/multi", func(ctx Context) error {
 		return ctx.String(http.StatusOK, "OK")
-	}, WithMethod("GET", "POST"))
+	}, WithMethods("GET", "POST"))
 
 	err = srv.Route()
 	require.NoError(t, err)
@@ -82,13 +82,13 @@ func TestWithMultipleMethodsAndName(t *testing.T) {
 	srv.HandleFunc("/multi-named", func(ctx Context) error {
 		path := ctx.GetRoutePath("multi")
 		return ctx.String(http.StatusOK, path)
-	}, WithMethod("GET", "POST"), WithName("multi"))
+	}, WithMethods("GET", "POST"), WithName("multi"))
 
 	srv.Group("/grouped", "grouped", func(srv *Server) {
 		srv.HandleFunc("/multi-named", func(ctx Context) error {
 			path := ctx.GetRoutePath("grouped/multi")
 			return ctx.String(http.StatusOK, path)
-		}, WithMethod("GET", "POST"), WithName("multi"))
+		}, WithMethods("GET", "POST"), WithName("multi"))
 	})
 
 	err = srv.Route()

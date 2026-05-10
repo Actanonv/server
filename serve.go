@@ -163,7 +163,7 @@ func WithMiddleware(middleware ...Middleware) HandleOptionFn {
 	}
 }
 
-func WithMethod(methods ...string) HandleOptionFn {
+func WithMethods(methods ...string) HandleOptionFn {
 	return func(o *HandleOption) {
 		o.methods = methods
 	}
