@@ -448,9 +448,10 @@ func (nfs NeuteredFileSystem) Open(path string) (http.File, error) {
 	return f, nil
 }
 
-var rePattern = regexp.MustCompile(`^(?:(\w+)\s+)?([^/ ]+)?(/.*)?$`)
+var rePattern = regexp.MustCompile(`^(?:(\w+) )?([^/ ]+)?(/.*)?$`)
 
-func PatternParts(pattern string) (method, name, path string) {
+func PatternParts(pattern string) (method, host, path string) {
+	pattern = strings.TrimSpace(pattern)
 	parts := rePattern.FindStringSubmatch(pattern)
 	if len(parts) != 4 {
 		return "", "", ""
