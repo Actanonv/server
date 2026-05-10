@@ -23,16 +23,16 @@ import (
 type ErrorFunc func(ctx Context, err error)
 
 type Options struct {
-	Host        string
-	Port        int
-	Public      string
-	Middleware  []Middleware
-	Routes      []Route
-	Log         *slog.Logger
-	LogRequests bool
-	SessionMgr  *scs.SessionManager
-	ErrorFunc   ErrorFunc
-	Debug       bool
+	Host               string
+	Port               int
+	Public             string
+	Middleware         []Middleware
+	Routes             []Route
+	Log                *slog.Logger
+	LogRequests        bool
+	SessionMgr         *scs.SessionManager
+	ErrorFunc          ErrorFunc
+	Debug              bool
 	DisableLoadAndSave bool
 }
 
@@ -147,6 +147,7 @@ func (s *Server) Route() error {
 type HandleOption struct {
 	name       string
 	middleware []Middleware
+	methods    []string
 }
 type HandleOptionFn func(*HandleOption)
 
@@ -159,6 +160,12 @@ func WithName(name string) HandleOptionFn {
 func WithMiddleware(middleware ...Middleware) HandleOptionFn {
 	return func(o *HandleOption) {
 		o.middleware = middleware
+	}
+}
+
+func WithMethod(methods ...string) HandleOptionFn {
+	return func(o *HandleOption) {
+		o.methods = methods
 	}
 }
 
@@ -180,10 +187,26 @@ func (s *Server) Handle(pattern string, handler http.Handler, args ...HandleOpti
 		handler = Chain(options.middleware).Then(handler)
 	}
 
-	s.routes = append(s.routes, Route{Match: pattern, Handler: handler, Name: options.name})
+	if len(options.methods) > 0 {
+		for _, method := range options.methods {
+			_, n, p := PatternParts(pattern)
+			newPattern := fmt.Sprintf("%s %s%s", strings.ToUpper(method), n, p)
+			if n == "" && p == "" {
+				newPattern = fmt.Sprintf("%s %s", strings.ToUpper(method), pattern)
+			}
+			s.routes = append(s.routes, Route{Match: newPattern, Handler: handler, Name: options.name})
+		}
+	} else {
+		s.routes = append(s.routes, Route{Match: pattern, Handler: handler, Name: options.name})
+	}
 
 	if options.name != "" {
-		s.addRouteNameLocked(options.name, pattern)
+		_, n, p := PatternParts(pattern)
+		plainPattern := n + p
+		if n == "" && p == "" {
+			plainPattern = pattern
+		}
+		s.addRouteNameLocked(options.name, plainPattern)
 		s.updateRouteNamesAtomicLocked()
 	}
 }
@@ -209,7 +232,12 @@ func (s *Server) Group(pattern string, name string, fn func(srv *Server)) {
 	for _, r := range sub.routes {
 		grp.Handle(r.Match, r.Handler)
 		if r.Name != "" {
-			s.addRouteNameLocked(fmt.Sprint(name, "/", r.Name), path.Join(pattern, r.Match))
+			_, n, p := PatternParts(r.Match)
+			plainMatch := n + p
+			if n == "" && p == "" {
+				plainMatch = r.Match
+			}
+			s.addRouteNameLocked(fmt.Sprint(name, "/", r.Name), path.Join(pattern, plainMatch))
 			hasNamedRoutes = true
 		}
 	}
